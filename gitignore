@@ -1,0 +1,8 @@
+# SÉCURITÉ — Ces fichiers ne seront JAMAIS sur GitHub
+.env
+data.json
+recap_final.json
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
