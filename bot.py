@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 import os
-import json
 import asyncio
 from datetime import datetime, timedelta
 import pytz
@@ -10,6 +9,8 @@ from dotenv import load_dotenv
 from ai_generator import generate_activity_content
 from data_manager import DataManager
 from activities import ACTIVITIES_SCHEDULE
+from aiohttp import web
+import threading
 
 load_dotenv()
 
@@ -17,6 +18,28 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 TIMEZONE = pytz.timezone("Europe/Paris")
 
+# ──────────────────────────────────────────
+#  KEEP-ALIVE — démarre dans un thread séparé
+#  Render détecte le port et garde le service vivant
+# ──────────────────────────────────────────
+def run_web_server():
+    from flask import Flask
+    app = Flask(__name__)
+
+    @app.route("/")
+    def home():
+        return "Bot en ligne !", 200
+
+    port = int(os.getenv("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+# Lance le serveur web dans un thread séparé AVANT le bot
+web_thread = threading.Thread(target=run_web_server, daemon=True)
+web_thread.start()
+
+# ──────────────────────────────────────────
+#  BOT SETUP
+# ──────────────────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -31,15 +54,12 @@ db = DataManager()
 
 @tasks.loop(minutes=1)
 async def daily_scheduler():
-    """Vérifie chaque minute si on doit envoyer l'activité du jour."""
     now = datetime.now(TIMEZONE)
-    # Envoi à 10h00 pile
     if now.hour == 10 and now.minute == 0:
         await send_daily_activity()
 
 @tasks.loop(minutes=1)
 async def weekly_scheduler():
-    """Vérifie chaque minute si une semaine s'est écoulée (lundi 10h00)."""
     now = datetime.now(TIMEZONE)
     state = db.get_state()
     start = datetime.fromisoformat(state["week_start"]).replace(tzinfo=TIMEZONE)
@@ -64,14 +84,12 @@ async def weekly_scheduler():
                 await send_final_recap(channel)
 
 async def send_daily_activity():
-    """Génère et envoie l'activité du jour via l'IA."""
     channel = bot.get_channel(CHANNEL_ID)
     if not channel:
         return
 
     state = db.get_state()
     week_num = state["current_week"]
-
     if week_num > 8:
         return
 
@@ -79,16 +97,14 @@ async def send_daily_activity():
     if not activity_info:
         return
 
-    # Génération IA du contenu
     thinking_msg = await channel.send(f"{activity_info['emoji']} *Génération de l'activité du jour...*")
     try:
         content = await generate_activity_content(activity_info["type"], activity_info.get("ai_prompt", ""))
         await thinking_msg.delete()
         embed = activity_info["build_embed"](content)
-        embed.set_footer(text=f"Semaine {week_num}/8 • {activity_info['name']} • Réagis ou utilise /jouer pour participer !")
+        embed.set_footer(text=f"Semaine {week_num}/8 • {activity_info['name']} • Utilise /jouer pour participer !")
         msg = await channel.send(embed=embed)
 
-        # Ajouter réactions si c'est un vote/dilemme
         if activity_info.get("reactions"):
             for r in activity_info["reactions"]:
                 await msg.add_reaction(r)
@@ -98,7 +114,6 @@ async def send_daily_activity():
         await thinking_msg.edit(content=f"❌ Erreur lors de la génération : {e}")
 
 async def send_weekly_recap(channel):
-    """Envoie le récap de fin de semaine avec scores fictifs."""
     state = db.get_state()
     week_num = state["current_week"]
     scores = db.get_week_scores(week_num)
@@ -135,7 +150,6 @@ async def send_weekly_recap(channel):
     await channel.send(embed=embed)
 
 async def send_final_recap(channel):
-    """Récap final des 8 semaines → conversion DraftBot."""
     all_scores = db.get_all_scores()
 
     embed = discord.Embed(
@@ -165,7 +179,7 @@ async def send_final_recap(channel):
 
     embed.add_field(
         name="📋 Pour toi (admin)",
-        value="Un fichier `recap_final.json` a été généré avec tous les montants à appliquer sur DraftBot.",
+        value="Un fichier recap_final.json a été généré avec tous les montants à appliquer sur DraftBot.",
         inline=False
     )
     await channel.send(embed=embed)
@@ -284,3 +298,4 @@ async def on_ready():
         await channel.send(embed=embed)
 
 bot.run(TOKEN)
+
