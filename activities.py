@@ -1,83 +1,66 @@
 import discord
+from data_manager import DataManager, POINTS_PARTICIPATION, POINTS_BONNE_REPONSE
 
-# ──────────────────────────────────────────────────────────────
-#  PLANNING DES 8 SEMAINES
-#  Modifie les "name" et "type" selon les résultats de tes votes !
-#  Les types disponibles : dilemme, fake_news, quiz, geoguessr,
-#                          boss, ce_que_tu_preferes, sondage_absurde,
-#                          deux_verites_mensonge, histoire_collaborative, defi
-# ──────────────────────────────────────────────────────────────
+db = DataManager()
 
-def build_dilemme_embed(content: dict) -> discord.Embed:
+# ──────────────────────────────────────────
+#  BUILDERS D'EMBEDS PAR ACTIVITÉ
+# ──────────────────────────────────────────
+
+def build_mais_embed(content: dict) -> discord.Embed:
     embed = discord.Embed(
-        title="🤔 DILEMME IMPOSSIBLE du jour !",
-        description=f"## {content['question']}",
-        color=0xe74c3c
+        title="💰 MAIS... du jour !",
+        description=(
+            f"## Tu prends **{content['montant_grand']}** mais...\n"
+            f"### {content['mais']}\n\n"
+            f"*{content.get('contexte','')}*"
+        ),
+        color=0xf1c40f
     )
-    embed.add_field(name="🅰️ Option A", value=content["option_a"], inline=True)
-    embed.add_field(name="🅱️ Option B", value=content["option_b"], inline=True)
-    if content.get("twist"):
-        embed.add_field(name="⚡ Le twist", value=content["twist"], inline=False)
-    embed.add_field(name="Comment voter ?", value="Réagis avec 🅰️ ou 🅱️ !", inline=False)
+    embed.add_field(
+        name="Comment ça marche ?",
+        value=(
+            f"✅ Vote pour **prendre {content['montant_grand']}** (malgré le mais...)\n"
+            f"❌ Vote pour **refuser** et garder ta dignité\n\n"
+            f"🏆 Si tu votes comme la majorité → tu gagnes les points affichés !\n"
+            f"😐 Si tu votes différemment → +{POINTS_PARTICIPATION} pts participation quand même"
+        ),
+        inline=False
+    )
     return embed
 
-def build_fake_news_embed(content: dict) -> discord.Embed:
+def build_blindtest_embed(content: dict) -> discord.Embed:
     embed = discord.Embed(
-        title=f"📰 {content['titre']}",
-        description=content["contenu"],
-        color=0x95a5a6
+        title="🎵 BLIND TEST du jour !",
+        description=f"**Trouve la chanson avec ces paroles :**\n\n*{content['paroles']}*",
+        color=0xe91e63
     )
-    embed.set_footer(text=f"Source : {content['source']} | ⚠️ C'est une FAKE NEWS fictive et humoristique !")
-    embed.add_field(name="🎯 À toi !", value="Utilise `/jouer` pour donner ton avis ou inventer la suite !", inline=False)
+    embed.add_field(name="💡 Indice bonus", value=f"||{content['indice_bonus']}||", inline=False)
+    embed.add_field(name="✅ Titre", value=f"||{content['titre']}||", inline=True)
+    embed.add_field(name="🎤 Artiste", value=f"||{content['artiste']}||", inline=True)
+    if content.get("source"):
+        embed.add_field(name="🎬 Source", value=f"||{content['source']}||", inline=True)
+    embed.add_field(
+        name="🎯 Comment participer ?",
+        value=f"Utilise `/jouer <titre> - <artiste>` !\n+{POINTS_PARTICIPATION} pts participation | +{POINTS_BONNE_REPONSE} pts par bonne réponse (titre/artiste/source)",
+        inline=False
+    )
     return embed
 
-def build_quiz_embed(content: dict) -> discord.Embed:
+def build_roi_embed(content: dict) -> discord.Embed:
     embed = discord.Embed(
-        title="🧠 QUIZ du jour !",
-        description=f"## {content['question']}",
-        color=0x3498db
+        title="👑 ROI DU SERVEUR — Un Roi se cache parmi vous !",
+        description="Un membre a été secrètement désigné Roi. Trouvez-le !",
+        color=0xffd700
     )
-    embed.add_field(name="💡 Indice", value=f"||{content['indice']}||", inline=False)
-    embed.add_field(name="✅ Réponse", value=f"||{content['reponse']}||", inline=True)
-    embed.add_field(name="📚 Anecdote", value=f"||{content['anecdote']}||", inline=False)
-    embed.add_field(name="Comment jouer ?", value="Utilise `/jouer <ta réponse>` pour participer !", inline=False)
-    return embed
-
-def build_geoguessr_embed(content: dict) -> discord.Embed:
-    embed = discord.Embed(
-        title="🗺️ GEOGUESSR TEXTUEL — Trouve le lieu !",
-        description=f"**Difficulté : {content['difficulte']}**",
-        color=0x27ae60
-    )
-    for i, indice in enumerate(content["indices"], 1):
-        embed.add_field(name=f"Indice {i}", value=indice, inline=False)
-    embed.add_field(name="✅ Réponse", value=f"||{content['reponse']}||", inline=True)
-    embed.add_field(name="🌍 Anecdote", value=f"||{content['anecdote']}||", inline=True)
-    embed.add_field(name="Comment jouer ?", value="Utilise `/jouer <nom du lieu>` pour répondre !", inline=False)
-    return embed
-
-def build_boss_embed(content: dict) -> discord.Embed:
-    embed = discord.Embed(
-        title=f"⚔️ BOSS DE LA SEMAINE : {content['nom']}",
-        description=content["description"],
-        color=0x8e44ad
-    )
-    embed.add_field(name="❤️ PV du boss", value=f"{content['pv']} HP", inline=True)
-    embed.add_field(name="🏆 Récompense", value=content["recompense"], inline=True)
-    attaques = "\n".join([f"• {a}" for a in content["attaques"]])
-    embed.add_field(name="⚡ Attaques", value=attaques, inline=False)
-    embed.add_field(name="Comment attaquer ?", value="Utilise `/jouer` pour infliger des dégâts aléatoires !", inline=False)
-    return embed
-
-def build_preference_embed(content: dict) -> discord.Embed:
-    embed = discord.Embed(
-        title="❓ CE QUE TU PRÉFÈRES",
-        description=f"## {content['question']}",
-        color=0xf39c12
-    )
-    embed.add_field(name=f"{content['emoji_a']} Option A", value=content["option_a"], inline=True)
-    embed.add_field(name=f"{content['emoji_b']} Option B", value=content["option_b"], inline=True)
-    embed.add_field(name="Comment voter ?", value=f"Réagis avec {content['emoji_a']} ou {content['emoji_b']} !", inline=False)
+    embed.add_field(name="⚔️ Règles", value=(
+        "• Utilise `/deviner @membre` pour tenter de trouver le Roi\n"
+        "• **3 tentatives max** par jour\n"
+        "• Le Roi gagne **+2 pts** chaque heure qu'il reste non-découvert\n"
+        "• Celui qui trouve le Roi gagne **+20 pts** !\n"
+        "• Des indices seront envoyés toutes les 2-3 heures"
+    ), inline=False)
+    embed.add_field(name="🕐 Premier indice", value="Dans quelques heures...", inline=False)
     return embed
 
 def build_sondage_embed(content: dict) -> discord.Embed:
@@ -86,119 +69,157 @@ def build_sondage_embed(content: dict) -> discord.Embed:
         description=f"## {content['question']}",
         color=0x1abc9c
     )
-    for i, (opt, emoji) in enumerate(zip(content["options"], content["emojis"])):
+    emojis = content.get("emojis", ["🔴", "🟡", "🟢", "🔵"])
+    for i, (opt, emoji) in enumerate(zip(content.get("options", []), emojis)):
         embed.add_field(name=f"{emoji} Option {i+1}", value=opt, inline=True)
-    embed.add_field(name="Comment voter ?", value="Réagis avec les emojis ci-dessus !", inline=False)
+    embed.add_field(
+        name="Comment participer ?",
+        value=f"Réagis avec les emojis ! +{POINTS_PARTICIPATION} pts pour avoir voté",
+        inline=False
+    )
     return embed
 
-def build_deux_verites_embed(content: dict) -> discord.Embed:
+def build_dilemme_embed(content: dict) -> discord.Embed:
     embed = discord.Embed(
-        title=f"🤥 DEUX VÉRITÉS UN MENSONGE — Thème : {content['theme']}",
-        description="Laquelle est fausse ?",
+        title="🤔 DILEMME IMPOSSIBLE du jour !",
+        description=f"## {content['question']}",
+        color=0xe74c3c
+    )
+    embed.add_field(name="🇦 Option A", value=content.get("option_a", ""), inline=True)
+    embed.add_field(name="🇧 Option B", value=content.get("option_b", ""), inline=True)
+    if content.get("twist"):
+        embed.add_field(name="⚡ Le twist", value=content["twist"], inline=False)
+    embed.add_field(
+        name="Comment participer ?",
+        value=f"Réagis avec 🇦 ou 🇧 !\n+{POINTS_PARTICIPATION} pts participation | +{POINTS_BONNE_REPONSE} pts si tu votes comme la majorité",
+        inline=False
+    )
+    return embed
+
+def build_tvm_embed(content: dict) -> discord.Embed:
+    embed = discord.Embed(
+        title="🤥 DEUX VÉRITÉS UN MENSONGE — Soumets les tiennes !",
+        description=content.get("invitation", "C'est l'heure du jeu !"),
         color=0xe67e22
     )
-    for i, aff in enumerate(content["affirmations"], 1):
-        embed.add_field(name=f"Affirmation {i}", value=aff["texte"], inline=False)
-    embed.add_field(name="✅ Réponse", value=f"||{content['explication']}||", inline=False)
-    embed.add_field(name="Comment jouer ?", value="Utilise `/jouer 1`, `/jouer 2` ou `/jouer 3` !", inline=False)
-    return embed
-
-def build_histoire_embed(content: dict) -> discord.Embed:
-    embed = discord.Embed(
-        title=f"✍️ HISTOIRE COLLABORATIVE — {content['genre']}",
-        description=content["debut"],
-        color=0x2980b9
+    embed.add_field(
+        name="📝 Comment ça marche ?",
+        value=(
+            "1. Utilise `/soumettre <vérité1> | <vérité2> | <mensonge>` en DM au bot\n"
+            "2. Le bot va présenter chaque soumission anonymement\n"
+            "3. Les autres doivent deviner quelle affirmation est le mensonge\n"
+            f"4. +{POINTS_PARTICIPATION} pts participation | +{POINTS_BONNE_REPONSE} pts si tu trouves !"
+        ),
+        inline=False
     )
-    embed.add_field(name="🔮 Et maintenant ?", value=content["cliffhanger"], inline=False)
-    embed.add_field(name="Comment participer ?", value="Utilise `/jouer <ta suite>` pour continuer l'histoire !", inline=False)
+    if content.get("exemples"):
+        embed.add_field(name="💡 Exemple", value="\n".join(content["exemples"]), inline=False)
     return embed
 
-def build_defi_embed(content: dict) -> discord.Embed:
+def build_recette_embed(content: dict) -> discord.Embed:
     embed = discord.Embed(
-        title=f"🔥 DÉFI DE LA SEMAINE : {content['titre']}",
-        description=content["description"],
-        color=0xc0392b
+        title=f"🧪 RECETTE IMPOSSIBLE : {content.get('titre_mystere', '???')}",
+        description="L'IA vous a concocté une liste d'ingrédients... à vous d'inventer la recette !",
+        color=0x27ae60
     )
-    embed.add_field(name="📸 Comment participer ?", value=content["comment_participer"], inline=False)
-    embed.add_field(name="🏆 Récompense", value=content["recompense"], inline=True)
+    ingredients_text = ""
+    for ing in content.get("ingredients", []):
+        niveau_emoji = {"normal": "🟢", "wtf": "🟠", "impossible": "🔴"}.get(ing.get("niveau", "normal"), "⚪")
+        ingredients_text += f"{niveau_emoji} **{ing['quantite']}** de {ing['nom']}\n"
+    embed.add_field(name="🥘 Ingrédients", value=ingredients_text or "???", inline=False)
+    embed.add_field(name="⚠️ Contrainte", value=content.get("contrainte", ""), inline=False)
+    embed.add_field(
+        name="👨‍🍳 Comment participer ?",
+        value=f"Utilise `/jouer <ta recette>` pour soumettre ta création !\nLes meilleures recettes seront votées. +{POINTS_PARTICIPATION} pts participation | +{POINTS_BONNE_REPONSE} pts si ta recette gagne le vote !",
+        inline=False
+    )
     return embed
 
-# ──────────────────────────────────────────────────────────────
-#  PLANNING — Modifie selon les résultats de tes votes !
-#  Ordre suggéré basé sur les votes (du plus populaire au moins)
-# ──────────────────────────────────────────────────────────────
+def build_olympiade_embed(content: dict) -> discord.Embed:
+    embed = discord.Embed(
+        title=f"{content.get('emoji','🎪')} OLYMPIADES — {content.get('nom', 'Épreuve du jour')}",
+        description=content.get("description", ""),
+        color=0x3498db
+    )
+    embed.add_field(name="📋 Comment participer ?", value=content.get("comment_participer", ""), inline=False)
+    embed.add_field(name="🏅 Points", value=content.get("critere_victoire", ""), inline=False)
+    return embed
+
+# ──────────────────────────────────────────
+#  PLANNING DES 8 SEMAINES
+# ──────────────────────────────────────────
 
 ACTIVITIES_SCHEDULE = {
     1: {
-        "name": "Dilemme Impossible",
-        "emoji": "🤔",
-        "type": "dilemme",
-        "color": 0xe74c3c,
-        "description": "Chaque jour un dilemme impossible généré par l'IA. Vote 🅰️ ou 🅱️ !",
-        "reactions": ["🇦", "🇧"],
-        "build_embed": build_dilemme_embed,
+        "name": "Mais... (10€ ou 200€ mais...)",
+        "emoji": "💰",
+        "type": "mais",
+        "color": 0xf1c40f,
+        "description": "Chaque jour : prends l'argent mais il y a un catch ! Vote ✅ ou ❌, bonus si tu votes comme la majorité.",
+        "reactions": ["✅", "❌"],
+        "build_embed": build_mais_embed,
     },
     2: {
-        "name": "Fake News du Jour",
-        "emoji": "📰",
-        "type": "fake_news",
-        "color": 0x95a5a6,
-        "description": "L'IA génère une fausse info absurde et humoristique chaque jour !",
-        "reactions": ["😂", "🤯", "💀"],
-        "build_embed": build_fake_news_embed,
+        "name": "Blind Test",
+        "emoji": "🎵",
+        "type": "blindtest",
+        "color": 0xe91e63,
+        "description": "Des paroles de chanson chaque jour → trouve titre, artiste et source !",
+        "reactions": ["🎵"],
+        "build_embed": build_blindtest_embed,
     },
     3: {
+        "name": "Roi du Serveur",
+        "emoji": "👑",
+        "type": "roi_indice",
+        "color": 0xffd700,
+        "description": "Un Roi secret tiré au sort. Indices toutes les 2-3h, 3 tentatives max/jour. Trouvez-le !",
+        "reactions": [],
+        "build_embed": build_roi_embed,
+    },
+    4: {
         "name": "Sondage Absurde",
         "emoji": "📊",
         "type": "sondage_absurde",
         "color": 0x1abc9c,
-        "description": "Des sondages complètement absurdes générés chaque jour par l'IA !",
+        "description": "Des sondages fous générés par l'IA. Participe et gagne des points !",
         "reactions": ["🔴", "🟡", "🟢", "🔵"],
         "build_embed": build_sondage_embed,
     },
-    4: {
-        "name": "Quiz Culture",
-        "emoji": "🧠",
-        "type": "quiz",
-        "color": 0x3498db,
-        "description": "Une question de culture générale par jour. Qui sera le plus fort ?",
-        "reactions": ["✅"],
-        "build_embed": build_quiz_embed,
-    },
     5: {
-        "name": "2 Vérités 1 Mensonge",
-        "emoji": "🤥",
-        "type": "deux_verites_mensonge",
-        "color": 0xe67e22,
-        "description": "Trouve le mensonge parmi les 3 affirmations !",
-        "reactions": ["1️⃣", "2️⃣", "3️⃣"],
-        "build_embed": build_deux_verites_embed,
+        "name": "Dilemme Impossible",
+        "emoji": "🤔",
+        "type": "dilemme",
+        "color": 0xe74c3c,
+        "description": "Un dilemme impossible chaque jour. Vote et gagne si tu choisis comme la majorité !",
+        "reactions": ["🇦", "🇧"],
+        "build_embed": build_dilemme_embed,
     },
     6: {
-        "name": "Ce Que Tu Préfères",
-        "emoji": "❓",
-        "type": "ce_que_tu_preferes",
-        "color": 0xf39c12,
-        "description": "A ou B ? Des choix impossibles chaque jour !",
-        "reactions": [],  # les emojis viennent du contenu IA
-        "build_embed": build_preference_embed,
+        "name": "Deux Vérités Un Mensonge",
+        "emoji": "🤥",
+        "type": "deux_verites_mensonge_invite",
+        "color": 0xe67e22,
+        "description": "Soumets tes 2 vérités 1 mensonge, les autres doivent trouver lequel est faux !",
+        "reactions": ["1️⃣", "2️⃣", "3️⃣"],
+        "build_embed": build_tvm_embed,
     },
     7: {
-        "name": "Histoire Collaborative",
-        "emoji": "✍️",
-        "type": "histoire_collaborative",
-        "color": 0x2980b9,
-        "description": "L'IA lance une histoire, vous la continuez avec `/jouer` !",
-        "reactions": ["📖"],
-        "build_embed": build_histoire_embed,
+        "name": "Recette Impossible",
+        "emoji": "🧪",
+        "type": "recette",
+        "color": 0x27ae60,
+        "description": "L'IA donne des ingrédients improbables, crée la meilleure recette !",
+        "reactions": ["🍽️"],
+        "build_embed": build_recette_embed,
     },
     8: {
-        "name": "GeoGuessr Textuel",
-        "emoji": "🗺️",
-        "type": "geoguessr",
-        "color": 0x27ae60,
-        "description": "Trouve le lieu grâce aux indices ! Le premier qui répond correctement gagne.",
-        "reactions": ["🌍"],
-        "build_embed": build_geoguessr_embed,
+        "name": "Olympiades du Serveur",
+        "emoji": "🎪",
+        "type": "olympiade_epreuve",
+        "color": 0x3498db,
+        "description": "Épreuves quotidiennes, classement dévoilé progressivement du top 10 au podium final !",
+        "reactions": ["🏅"],
+        "build_embed": build_olympiade_embed,
     },
 }
