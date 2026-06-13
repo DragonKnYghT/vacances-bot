@@ -369,8 +369,8 @@ async def test_bot(interaction: discord.Interaction):
 
     # Test 6 : Mini-jeux
     try:
-        from minigames import MenuPrincipal
-        results.append(("✅", "Mini-jeux", "Module chargé — /menu disponible"))
+        from minigames import setup_menu_command
+        results.append(("✅", "Mini-jeux", "Module chargé — /slot /quiz /champion /p4 disponibles"))
     except Exception as e:
         results.append(("❌", "Mini-jeux", str(e)))
 
