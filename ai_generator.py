@@ -122,7 +122,7 @@ async def generate_activity_content(activity_type: str, extra_context: str = "")
     params = {"key": GEMINI_API_KEY}
     payload = {
         "contents": [{"parts": [{"text": full_prompt}]}],
-        "generationConfig": {"temperature": 0.9, "maxOutputTokens": 1000}
+        "generationConfig": {"temperature": 0.9, "maxOutputTokens": 2048}
     }
  
     async with aiohttp.ClientSession() as session:
@@ -130,21 +130,24 @@ async def generate_activity_content(activity_type: str, extra_context: str = "")
             data = await resp.json()
             if "candidates" not in data:
                 raise Exception(f"Gemini error: {data}")
-            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            # Nettoyage robuste du JSON
+            # Log complet pour debug
+            raw = data["candidates"][0]["content"]["parts"][0]["text"]
+            print(f"[GEMINI RAW] {repr(raw[:500])}")
+            text = raw.strip()
+            # Nettoyage backticks
             if "```" in text:
                 parts = text.split("```")
                 for part in parts:
-                    part = part.strip()
-                    if part.startswith("json"):
-                        part = part[4:].strip()
-                    if part.startswith("{"):
-                        text = part
+                    p = part.strip().lstrip("json").strip()
+                    if p.startswith("{"):
+                        text = p
                         break
-            # Trouver le JSON entre { }
+            # Extraire uniquement le JSON
             start = text.find("{")
             end = text.rfind("}") + 1
             if start != -1 and end > start:
                 text = text[start:end]
+            print(f"[GEMINI CLEAN] {repr(text[:300])}")
             return json.loads(text)
+ 
  
