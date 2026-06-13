@@ -1,9 +1,10 @@
-import aiohttp
 import os
 import json
+import random
+from google import genai
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 PROMPTS = {
     "mais": """Génère un défi "X€ ou Y€ mais..." pour Discord francophone.
@@ -14,26 +15,25 @@ Format JSON strict :
   "mais": "la condition absurde/gênante/drôle",
   "contexte": "une phrase courte pour mettre en ambiance"
 }
-Le "mais" doit être créatif : humiliant, drôle, bizarre. Ex: "tu dois envoyer un vocal de toi qui chante faux chaque matin pendant une semaine".""",
+Le "mais" doit être créatif et drôle.""",
 
     "blindtest": """Génère un blind test textuel pour Discord francophone.
 Format JSON strict :
 {
-  "paroles": "4-5 lignes de paroles caractéristiques de la chanson (pas le refrain évident)",
-  "titre": "titre exact de la chanson",
-  "artiste": "nom exact de l'artiste",
-  "source": "film/série/jeu d'où vient la chanson, ou null si aucune",
+  "paroles": "4-5 lignes de paroles caractéristiques (pas le refrain évident)",
+  "titre": "titre exact",
+  "artiste": "nom exact",
+  "source": "film/série/jeu ou null",
   "annee": "année de sortie",
-  "indice_bonus": "un indice supplémentaire sans révéler le titre"
+  "indice_bonus": "un indice sans révéler le titre"
 }
-Choisis des chansons variées : pop fr, rap fr, variété, années 80-2020s, BO de films connus.""",
+Choisis des chansons variées et connues.""",
 
     "roi_indice": """Génère un indice pour deviner une personne mystère sur Discord.
 Format JSON strict :
 {
-  "indice": "un indice vague sur la personnalité/comportements de la personne mystère, sans donner son nom"
-}
-L'indice doit être amusant et progressivement plus précis selon le numéro d'indice donné en contexte.""",
+  "indice": "un indice amusant sur la personnalité/comportements, sans donner le nom"
+}""",
 
     "sondage_absurde": """Génère un sondage absurde et fun pour Discord avec 4 options.
 Format JSON strict :
@@ -47,45 +47,41 @@ Format JSON strict :
 Format JSON strict :
 {
   "question": "Tu dois choisir entre [A] OU [B] ?",
-  "option_a": "description complète de A avec conséquences",
-  "option_b": "description complète de B avec conséquences",
-  "twist": "un détail absurde qui complique encore plus le choix"
+  "option_a": "description complète de A",
+  "option_b": "description complète de B",
+  "twist": "détail absurde qui complique encore le choix"
 }""",
 
-    "deux_verites_mensonge_invite": """Génère un message pour inviter les membres à soumettre leurs 2 vérités 1 mensonge.
+    "deux_verites_mensonge_invite": """Génère un message d'invitation pour le jeu 2 vérités 1 mensonge.
 Format JSON strict :
 {
-  "invitation": "message fun pour inviter les gens à participer",
+  "invitation": "message fun pour inviter les gens",
   "exemples": ["exemple de vérité", "exemple de mensonge drôle"]
 }""",
 
-    "recette": """Génère une liste d'ingrédients pour un jeu de recette impossible sur Discord.
+    "recette": """Génère une liste d'ingrédients pour un jeu de recette impossible.
 Format JSON strict :
 {
-  "titre_mystere": "nom mystérieux du plat final",
+  "titre_mystere": "nom mystérieux du plat",
   "ingredients": [
-    {"nom": "ingrédient classique", "quantite": "200g", "niveau": "normal"},
+    {"nom": "ingrédient", "quantite": "200g", "niveau": "normal"},
     {"nom": "ingrédient bizarre", "quantite": "3 cuillères", "niveau": "wtf"},
-    {"nom": "ingrédient normal", "quantite": "1 pincée", "niveau": "normal"},
-    {"nom": "ingrédient impossible", "quantite": "au goût", "niveau": "impossible"},
-    {"nom": "ingrédient drôle", "quantite": "à volonté", "niveau": "wtf"}
+    {"nom": "ingrédient impossible", "quantite": "au goût", "niveau": "impossible"}
   ],
-  "contrainte": "une contrainte de préparation absurde"
-}
-Mélange des ingrédients normaux et complètement fous.""",
+  "contrainte": "contrainte de préparation absurde"
+}""",
 
     "olympiade_epreuve": """Génère une épreuve pour les Olympiades Discord.
 Format JSON strict :
 {
   "nom": "nom de l'épreuve",
-  "emoji": "emoji représentatif",
-  "description": "description de l'épreuve en 2 phrases",
-  "comment_participer": "instruction précise pour participer avec /jouer",
-  "critere_victoire": "comment les points seront attribués"
-}
-Exemples : épreuve de rapidité à répondre, épreuve créative, épreuve de connaissance...""",
+  "emoji": "emoji",
+  "description": "description en 2 phrases",
+  "comment_participer": "instruction pour /jouer",
+  "critere_victoire": "comment les points sont attribués"
+}""",
 
-    "quiz_question": """Génère une question de quiz culture générale avec 4 propositions.
+    "quiz_question": """Génère une question de quiz culture générale DIFFÉRENTE à chaque fois.
 Format JSON strict :
 {
   "question": "la question",
@@ -93,9 +89,9 @@ Format JSON strict :
   "bonne_reponse": 0,
   "anecdote": "fait fun sur la réponse"
 }
-Mélange les propositions aléatoirement et indique l'index correct (0-3) dans bonne_reponse.""",
+IMPORTANT: mélange les propositions, indique l'index correct (0-3) dans bonne_reponse.""",
 
-    "champion_question": """Génère une question style quiz avec 4 propositions.
+    "champion_question": """Génère une question de quiz UNIQUE et ORIGINALE sur le thème donné.
 Format JSON strict :
 {
   "question": "la question",
@@ -104,50 +100,43 @@ Format JSON strict :
   "niveau": "Facile/Moyen/Difficile",
   "anecdote": "anecdote fun"
 }
-Mélange les propositions aléatoirement.""",
+IMPORTANT: sois créatif, ne répète jamais les mêmes questions. Mélange les propositions.""",
 }
 
 async def generate_activity_content(activity_type: str, extra_context: str = "") -> dict:
     prompt = PROMPTS.get(activity_type, PROMPTS["dilemme"])
     if extra_context:
-        prompt += f"\n\nContexte : {extra_context}"
+        prompt += f"\n\nThème/Contexte spécifique : {extra_context}"
 
-    import random as _r
-    seed = _r.randint(1000, 9999)
+    # Seed aléatoire pour forcer la variété
+    seed = random.randint(1000, 99999)
     full_prompt = (
-        f"[Seed: {seed}] Tu es un générateur de contenu fun pour serveur Discord francophone. "
-        "Réponds UNIQUEMENT en JSON valide, sans texte avant/après, sans backticks.\n\n"
+        f"[Variation #{seed}] Tu es un générateur de contenu fun pour Discord francophone. "
+        "Réponds UNIQUEMENT en JSON valide, sans texte avant/après, sans backticks markdown.\n\n"
         + prompt
     )
 
-    headers = {"Content-Type": "application/json"}
-    params = {"key": GEMINI_API_KEY}
-    payload = {
-        "contents": [{"parts": [{"text": full_prompt}]}],
-        "generationConfig": {"temperature": 0.9, "maxOutputTokens": 2048}
-    }
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=full_prompt,
+    )
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(GEMINI_URL, headers=headers, params=params, json=payload) as resp:
-            data = await resp.json()
-            if "candidates" not in data:
-                raise Exception(f"Gemini error: {data}")
-            # Log complet pour debug
-            raw = data["candidates"][0]["content"]["parts"][0]["text"]
-            print(f"[GEMINI RAW] {repr(raw[:500])}")
-            text = raw.strip()
-            # Nettoyage backticks
-            if "```" in text:
-                parts = text.split("```")
-                for part in parts:
-                    p = part.strip().lstrip("json").strip()
-                    if p.startswith("{"):
-                        text = p
-                        break
-            # Extraire uniquement le JSON
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            if start != -1 and end > start:
-                text = text[start:end]
-            print(f"[GEMINI CLEAN] {repr(text[:300])}")
-            return json.loads(text)
+    text = response.text.strip()
+    print(f"[GEMINI RAW] {repr(text[:300])}")
+
+    # Nettoyage
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            p = part.strip().lstrip("json").strip()
+            if p.startswith("{"):
+                text = p
+                break
+
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start != -1 and end > start:
+        text = text[start:end]
+
+    print(f"[GEMINI CLEAN] {repr(text[:200])}")
+    return json.loads(text)
