@@ -3,21 +3,41 @@ import json
 import random
 from google import genai
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=GEMINI_API_KEY)
+# ──────────────────────────────────────────
+#  ROTATION AUTOMATIQUE DES CLÉS GEMINI
+#  Dans Render, ajoute : GEMINI_API_KEY_1, GEMINI_API_KEY_2, etc.
+# ──────────────────────────────────────────
+
+def get_api_keys():
+    keys = []
+    for i in range(1, 11):
+        k = os.getenv(f"GEMINI_API_KEY_{i}")
+        if k:
+            keys.append(k)
+    if not keys:
+        k = os.getenv("GEMINI_API_KEY")
+        if k:
+            keys.append(k)
+    return keys
+
+API_KEYS = get_api_keys()
+current_key_index = [0]
+
+def rotate_key():
+    current_key_index[0] = (current_key_index[0] + 1) % len(API_KEYS)
+    print(f"[GEMINI] Rotation → clé {current_key_index[0] + 1}/{len(API_KEYS)}")
 
 PROMPTS = {
-    "mais": """Génère un défi "X€ ou Y€ mais..." pour Discord francophone.
+    "mais": """Génère un défi "X€ ou Y€ mais..." ORIGINAL et DIFFÉRENT pour Discord francophone.
 Format JSON strict :
 {
   "montant_petit": "10€",
   "montant_grand": "200€",
   "mais": "la condition absurde/gênante/drôle",
   "contexte": "une phrase courte pour mettre en ambiance"
-}
-Le "mais" doit être créatif et drôle.""",
+}""",
 
-    "blindtest": """Génère un blind test textuel pour Discord francophone.
+    "blindtest": """Génère un blind test textuel VARIÉ pour Discord francophone.
 Format JSON strict :
 {
   "paroles": "4-5 lignes de paroles caractéristiques (pas le refrain évident)",
@@ -27,7 +47,7 @@ Format JSON strict :
   "annee": "année de sortie",
   "indice_bonus": "un indice sans révéler le titre"
 }
-Choisis des chansons variées et connues.""",
+Choisis des chansons très variées : genres différents, époques différentes.""",
 
     "roi_indice": """Génère un indice pour deviner une personne mystère sur Discord.
 Format JSON strict :
@@ -35,7 +55,7 @@ Format JSON strict :
   "indice": "un indice amusant sur la personnalité/comportements, sans donner le nom"
 }""",
 
-    "sondage_absurde": """Génère un sondage absurde et fun pour Discord avec 4 options.
+    "sondage_absurde": """Génère un sondage absurde et fun ORIGINAL pour Discord avec 4 options.
 Format JSON strict :
 {
   "question": "question absurde et originale",
@@ -43,7 +63,7 @@ Format JSON strict :
   "emojis": ["🔴", "🟡", "🟢", "🔵"]
 }""",
 
-    "dilemme": """Génère un dilemme impossible drôle pour Discord francophone.
+    "dilemme": """Génère un dilemme impossible ORIGINAL et CRÉATIF pour Discord francophone.
 Format JSON strict :
 {
   "question": "Tu dois choisir entre [A] OU [B] ?",
@@ -59,7 +79,7 @@ Format JSON strict :
   "exemples": ["exemple de vérité", "exemple de mensonge drôle"]
 }""",
 
-    "recette": """Génère une liste d'ingrédients pour un jeu de recette impossible.
+    "recette": """Génère une liste d'ingrédients ORIGINALE pour un jeu de recette impossible.
 Format JSON strict :
 {
   "titre_mystere": "nom mystérieux du plat",
@@ -71,7 +91,7 @@ Format JSON strict :
   "contrainte": "contrainte de préparation absurde"
 }""",
 
-    "olympiade_epreuve": """Génère une épreuve pour les Olympiades Discord.
+    "olympiade_epreuve": """Génère une épreuve ORIGINALE pour les Olympiades Discord.
 Format JSON strict :
 {
   "nom": "nom de l'épreuve",
@@ -81,7 +101,7 @@ Format JSON strict :
   "critere_victoire": "comment les points sont attribués"
 }""",
 
-    "quiz_question": """Génère une question de quiz culture générale DIFFÉRENTE à chaque fois.
+    "quiz_question": """Génère une question de quiz culture générale UNIQUE et ORIGINALE.
 Format JSON strict :
 {
   "question": "la question",
@@ -89,9 +109,9 @@ Format JSON strict :
   "bonne_reponse": 0,
   "anecdote": "fait fun sur la réponse"
 }
-IMPORTANT: mélange les propositions, indique l'index correct (0-3) dans bonne_reponse.""",
+Mélange les propositions, indique l'index correct (0-3) dans bonne_reponse.""",
 
-    "champion_question": """Génère une question de quiz UNIQUE et ORIGINALE sur le thème donné.
+    "champion_question": """Génère une question de quiz UNIQUE sur le thème donné en contexte.
 Format JSON strict :
 {
   "question": "la question",
@@ -100,43 +120,57 @@ Format JSON strict :
   "niveau": "Facile/Moyen/Difficile",
   "anecdote": "anecdote fun"
 }
-IMPORTANT: sois créatif, ne répète jamais les mêmes questions. Mélange les propositions.""",
+Sois créatif, ne répète jamais les mêmes questions. Mélange les propositions.""",
 }
 
 async def generate_activity_content(activity_type: str, extra_context: str = "") -> dict:
     prompt = PROMPTS.get(activity_type, PROMPTS["dilemme"])
     if extra_context:
-        prompt += f"\n\nThème/Contexte spécifique : {extra_context}"
+        prompt += f"\n\nThème/Contexte : {extra_context}"
 
-    # Seed aléatoire pour forcer la variété
-    seed = random.randint(1000, 99999)
+    seed = random.randint(10000, 99999)
     full_prompt = (
-        f"[Variation #{seed}] Tu es un générateur de contenu fun pour Discord francophone. "
-        "Réponds UNIQUEMENT en JSON valide, sans texte avant/après, sans backticks markdown.\n\n"
+        f"[#{seed}] Tu es un générateur de contenu fun pour Discord francophone. "
+        "Réponds UNIQUEMENT en JSON valide, sans texte avant/après, sans backticks.\n\n"
         + prompt
     )
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=full_prompt,
-    )
+    if not API_KEYS:
+        raise Exception("Aucune clé GEMINI_API_KEY configurée dans les variables d'environnement !")
 
-    text = response.text.strip()
-    print(f"[GEMINI RAW] {repr(text[:300])}")
+    last_error = None
+    for attempt in range(len(API_KEYS)):
+        try:
+            client = genai.Client(api_key=API_KEYS[current_key_index[0]])
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=full_prompt,
+            )
+            text = response.text.strip()
+            print(f"[GEMINI OK] Clé {current_key_index[0]+1} — {repr(text[:100])}")
 
-    # Nettoyage
-    if "```" in text:
-        parts = text.split("```")
-        for part in parts:
-            p = part.strip().lstrip("json").strip()
-            if p.startswith("{"):
-                text = p
-                break
+            # Nettoyage JSON
+            if "```" in text:
+                parts = text.split("```")
+                for part in parts:
+                    p = part.strip().lstrip("json").strip()
+                    if p.startswith("{"):
+                        text = p
+                        break
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start != -1 and end > start:
+                text = text[start:end]
 
-    start = text.find("{")
-    end = text.rfind("}") + 1
-    if start != -1 and end > start:
-        text = text[start:end]
+            return json.loads(text)
 
-    print(f"[GEMINI CLEAN] {repr(text[:200])}")
-    return json.loads(text)
+        except Exception as e:
+            err = str(e)
+            if "429" in err or "quota" in err.lower() or "RESOURCE_EXHAUSTED" in err:
+                print(f"[GEMINI] Clé {current_key_index[0]+1} quota épuisé, rotation...")
+                rotate_key()
+                last_error = e
+            else:
+                raise e
+
+    raise Exception(f"Toutes les clés Gemini sont épuisées ! Dernière erreur : {last_error}")
