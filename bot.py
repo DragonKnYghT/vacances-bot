@@ -10,8 +10,6 @@ from ai_generator import generate_activity_content
 from data_manager import DataManager, POINTS_PARTICIPATION, POINTS_BONNE_REPONSE
 from activities import ACTIVITIES_SCHEDULE
 from minigames import setup_menu_command
-import threading
-from flask import Flask
 
 load_dotenv()
 
@@ -19,16 +17,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 TIMEZONE = pytz.timezone("Europe/Paris")
 
-# ── Keep-alive Flask ──
-def run_flask():
-    app = Flask("server")
-    @app.route("/")
-    def home():
-        return "Bot en ligne ! 🤖", 200
-    port = int(os.getenv("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, use_reloader=False)
-
-threading.Thread(target=run_flask, daemon=True).start()
+# Flask géré par server.py
 
 # ── Bot ──
 intents = discord.Intents.default()
