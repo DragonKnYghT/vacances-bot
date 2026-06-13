@@ -12,23 +12,23 @@ import random
 import uuid
 from ai_generator import generate_activity_content
 from data_manager import DataManager
- 
+
 db = DataManager()
- 
+
 THEMES_CHAMPION = [
     "Culture générale", "Histoire", "Science", "Sport",
     "Cinéma", "Musique", "Géographie", "Cuisine",
     "Animaux", "Technologies", "Célébrités", "Art"
 ]
- 
+
 # ──────────────────────────────────────────
 #  MENU PRINCIPAL
 # ──────────────────────────────────────────
- 
+
 class MenuPrincipal(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
- 
+
     @discord.ui.button(label="🎰 Machine à sous", style=discord.ButtonStyle.green, row=0)
     async def machine_sous(self, interaction: discord.Interaction, button: discord.ui.Button):
         view = MachineASous(interaction.user)
@@ -44,7 +44,7 @@ class MenuPrincipal(discord.ui.View):
             color=0xf1c40f
         )
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
- 
+
     @discord.ui.button(label="🧠 Question Champion", style=discord.ButtonStyle.blurple, row=0)
     async def question_champion(self, interaction: discord.Interaction, button: discord.ui.Button):
         view = ChoisirThemeChampion(interaction.user)
@@ -54,7 +54,7 @@ class MenuPrincipal(discord.ui.View):
             color=0x3498db
         )
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
- 
+
     @discord.ui.button(label="💰 Qui veut gagner ?", style=discord.ButtonStyle.blurple, row=0)
     async def qui_veut_gagner(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
@@ -70,7 +70,7 @@ class MenuPrincipal(discord.ui.View):
             await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"❌ Erreur génération : {e}", ephemeral=True)
- 
+
     @discord.ui.button(label="🔴 Puissance 4", style=discord.ButtonStyle.red, row=1)
     async def puissance4(self, interaction: discord.Interaction, button: discord.ui.Button):
         view = ChoisirModeP4(interaction.user)
@@ -81,22 +81,22 @@ class MenuPrincipal(discord.ui.View):
         )
         embed.add_field(name="Options", value="Joue contre le bot, ou lance un défi public !", inline=False)
         await interaction.response.send_message(embed=embed, view=view)
- 
+
     @discord.ui.button(label="🌐 Site Web", style=discord.ButtonStyle.grey, disabled=True, row=1)
     async def site_web(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("🚧 Bientôt disponible !", ephemeral=True)
- 
- 
+
+
 # ──────────────────────────────────────────
 #  MACHINE À SOUS
 # ──────────────────────────────────────────
- 
+
 SYMBOLES = ["🍒", "🍋", "🍊", "🍇", "⭐", "7️⃣", "💎", "🟢"]
 GAINS_TRIPLE = {
     "🟢": 200, "💎": 150, "7️⃣": 120, "⭐": 100,
     "🍇": 50, "🍊": 40, "🍋": 30, "🍒": 20
 }
- 
+
 def calcule_gain(rouleaux: list) -> tuple:
     mise = 10
     a, b, c = rouleaux
@@ -105,15 +105,15 @@ def calcule_gain(rouleaux: list) -> tuple:
         return gain - mise, f"TRIPLE {a} ! +{gain} pts 🎉"
     if a == b or b == c or a == c:
         symbole = a if a == b else (b if b == c else a)
-        return 5 - mise, f"Double {symbole} ! +5 pts 🎲"
+        return 5, f"Double {symbole} ! +5 pts 🎲"
     return -mise, "Rien... 😢 -10 pts"
- 
+
 class MachineASous(discord.ui.View):
     def __init__(self, user):
         super().__init__(timeout=120)
         self.user = user
         self.parties = 0
- 
+
     @discord.ui.button(label="🎰 Jouer (-10 pts)", style=discord.ButtonStyle.green)
     async def jouer(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user.id:
@@ -133,23 +133,23 @@ class MachineASous(discord.ui.View):
         embed.add_field(name="Total", value=f"{result['total']} pts fictifs", inline=True)
         embed.set_footer(text=f"Parties : {self.parties} | 2 symboles = +5 pts | 3 symboles = jackpot !")
         await interaction.response.edit_message(embed=embed, view=self)
- 
+
     @discord.ui.button(label="❌ Fermer", style=discord.ButtonStyle.grey)
     async def fermer(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(content="À bientôt ! 🎰", embed=None, view=None)
- 
- 
+
+
 # ──────────────────────────────────────────
 #  QUESTION POUR UN CHAMPION
 # ──────────────────────────────────────────
- 
+
 class ChoisirThemeChampion(discord.ui.View):
     def __init__(self, user):
         super().__init__(timeout=60)
         self.user = user
         self.theme = None
         self.mode = None
- 
+
         theme_select = discord.ui.Select(
             placeholder="1️⃣ Choisis un thème...",
             options=[discord.SelectOption(label=t, value=t) for t in THEMES_CHAMPION],
@@ -157,7 +157,7 @@ class ChoisirThemeChampion(discord.ui.View):
         )
         theme_select.callback = self.theme_choisi
         self.add_item(theme_select)
- 
+
         mode_select = discord.ui.Select(
             placeholder="2️⃣ Choisis un mode...",
             options=[
@@ -169,17 +169,17 @@ class ChoisirThemeChampion(discord.ui.View):
         )
         mode_select.callback = self.mode_choisi
         self.add_item(mode_select)
- 
+
     async def theme_choisi(self, interaction: discord.Interaction):
         self.theme = interaction.data["values"][0]
         await interaction.response.defer()
         await self.lancer_si_pret(interaction)
- 
+
     async def mode_choisi(self, interaction: discord.Interaction):
         self.mode = interaction.data["values"][0]
         await interaction.response.defer()
         await self.lancer_si_pret(interaction)
- 
+
     async def lancer_si_pret(self, interaction: discord.Interaction):
         if not (self.theme and self.mode):
             return
@@ -189,7 +189,7 @@ class ChoisirThemeChampion(discord.ui.View):
             content["theme"] = self.theme
             view = QuizChampion(interaction.user, content, self.mode)
             embed = build_champion_embed(content, self.mode)
- 
+
             if self.mode in ("versus", "coop"):
                 await interaction.edit_original_response(content="✅ Question lancée en public !", embed=None, view=None)
                 await interaction.channel.send(embed=embed, view=view)
@@ -197,7 +197,7 @@ class ChoisirThemeChampion(discord.ui.View):
                 await interaction.edit_original_response(content=None, embed=embed, view=view)
         except Exception as e:
             await interaction.edit_original_response(content=f"❌ Erreur : {e}", view=None)
- 
+
 def build_champion_embed(content: dict, mode: str) -> discord.Embed:
     mode_labels = {"solo": "Solo 🎯", "versus": "Versus ⚔️", "coop": "Coop 🤝"}
     mode_desc = {
@@ -214,7 +214,7 @@ def build_champion_embed(content: dict, mode: str) -> discord.Embed:
     embed.add_field(name="Thème", value=content.get("theme", "Général"), inline=True)
     embed.set_footer(text="Clique sur la bonne réponse !")
     return embed
- 
+
 class QuizChampion(discord.ui.View):
     def __init__(self, user, content: dict, mode: str):
         super().__init__(timeout=60)
@@ -235,7 +235,7 @@ class QuizChampion(discord.ui.View):
             )
             btn.callback = self.make_callback(i, i == bonne)
             self.add_item(btn)
- 
+
     def make_callback(self, index: int, est_bonne: bool):
         async def callback(interaction: discord.Interaction):
             uid = str(interaction.user.id)
@@ -249,7 +249,7 @@ class QuizChampion(discord.ui.View):
             est_premier = self.premier is None and est_bonne
             if est_premier:
                 self.premier = uid
- 
+
             if self.mode == "versus":
                 pts = 30 if (est_bonne and est_premier) else (10 if est_bonne else -5)
             elif self.mode == "coop":
@@ -257,12 +257,12 @@ class QuizChampion(discord.ui.View):
                 pts = 20 if est_bonne else 0
             else:
                 pts = 30 if est_bonne else -5
- 
+
             result = db.add_points(uid, pts)
             bonne_rep = self.content["propositions"][self.content["bonne_reponse"]]
             anecdote = self.content.get("anecdote", "")
             sign = "+" if pts >= 0 else ""
- 
+
             if est_bonne:
                 msg = f"✅ **Bonne réponse !** {sign}{pts} pts"
                 if self.mode == "versus" and est_premier:
@@ -273,15 +273,15 @@ class QuizChampion(discord.ui.View):
                     msg = f"❌ **Raté !** La réponse était : **{bonne_rep}**\n0 pts (pas de pénalité en coop)\n📚 {anecdote}"
                 else:
                     msg = f"❌ **Raté !** La réponse était : **{bonne_rep}**\n{sign}{pts} pts\n📚 {anecdote}"
- 
+
             await interaction.response.send_message(f"{msg}\n💰 Total : {result['total']} pts", ephemeral=True)
         return callback
- 
- 
+
+
 # ──────────────────────────────────────────
 #  QUI VEUT GAGNER DES PIÈCES
 # ──────────────────────────────────────────
- 
+
 class QuizQuatreChoix(discord.ui.View):
     def __init__(self, user, content: dict):
         super().__init__(timeout=30)
@@ -300,7 +300,7 @@ class QuizQuatreChoix(discord.ui.View):
             )
             btn.callback = self.make_callback(i, i == bonne)
             self.add_item(btn)
- 
+
     def make_callback(self, index: int, est_bonne: bool):
         async def callback(interaction: discord.Interaction):
             if interaction.user.id != self.user.id:
@@ -324,17 +324,17 @@ class QuizQuatreChoix(discord.ui.View):
             await interaction.response.edit_message(view=self)
             await interaction.followup.send(f"{msg}\n💰 Total : {result['total']} pts", ephemeral=True)
         return callback
- 
- 
+
+
 # ──────────────────────────────────────────
 #  PUISSANCE 4
 # ──────────────────────────────────────────
- 
+
 class ChoisirModeP4(discord.ui.View):
     def __init__(self, challenger):
         super().__init__(timeout=60)
         self.challenger = challenger
- 
+
     @discord.ui.button(label="🤖 Jouer contre le Bot", style=discord.ButtonStyle.green)
     async def vs_bot(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.challenger.id:
@@ -343,7 +343,7 @@ class ChoisirModeP4(discord.ui.View):
         game = Puissance4Game(self.challenger, None)
         view = Puissance4View(game)
         await interaction.response.edit_message(embed=game.build_embed(), view=view)
- 
+
     @discord.ui.button(label="⚔️ Défier un joueur", style=discord.ButtonStyle.blurple)
     async def vs_joueur(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.challenger.id:
@@ -356,13 +356,13 @@ class ChoisirModeP4(discord.ui.View):
             color=0xe74c3c
         )
         await interaction.response.edit_message(embed=embed, view=view)
- 
+
 class AttendreChallengeP4(discord.ui.View):
     def __init__(self, challenger):
         super().__init__(timeout=120)
         self.challenger = challenger
         self.accepted = False
- 
+
     @discord.ui.button(label="✅ Accepter le défi !", style=discord.ButtonStyle.green)
     async def accepter(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id == self.challenger.id:
@@ -374,15 +374,15 @@ class AttendreChallengeP4(discord.ui.View):
         self.accepted = True
         game = Puissance4Game(self.challenger, interaction.user)
         view = Puissance4View(game)
-        await interaction.response.edit_message(embed=game.build_embed(), view=view)
- 
+        await interaction.response.send_message(embed=game.build_embed(), view=view)
+
 class Puissance4Game:
     ROWS = 6
     COLS = 7
     EMPTY = "⬛"
     P1 = "🔴"
     P2 = "🟡"
- 
+
     def __init__(self, p1, p2):
         self.board = [[self.EMPTY] * self.COLS for _ in range(self.ROWS)]
         self.p1 = p1
@@ -390,7 +390,7 @@ class Puissance4Game:
         self.current = 1
         self.winner = None
         self.moves = 0
- 
+
     def drop(self, col: int) -> bool:
         for row in range(self.ROWS - 1, -1, -1):
             if self.board[row][col] == self.EMPTY:
@@ -399,7 +399,7 @@ class Puissance4Game:
                 self.check_winner(row, col)
                 return True
         return False
- 
+
     def bot_move(self):
         available = [c for c in range(self.COLS) if self.board[0][c] == self.EMPTY]
         if available:
@@ -407,7 +407,7 @@ class Puissance4Game:
             self.current = 2
             self.drop(col)
             self.current = 1
- 
+
     def check_winner(self, row, col):
         piece = self.board[row][col]
         for dr, dc in [(0,1),(1,0),(1,1),(1,-1)]:
@@ -421,7 +421,7 @@ class Puissance4Game:
             if count >= 4:
                 self.winner = self.current
                 return
- 
+
     def build_embed(self) -> discord.Embed:
         nums = "1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣"
         board_str = "\n".join(["".join(row) for row in self.board]) + "\n" + nums
@@ -441,7 +441,7 @@ class Puissance4Game:
         embed = discord.Embed(title=title, description=board_str, color=color)
         embed.set_footer(text=f"🔴 {self.p1.display_name} vs 🟡 {p2_name}")
         return embed
- 
+
 class Puissance4View(discord.ui.View):
     def __init__(self, game: Puissance4Game):
         super().__init__(timeout=300)
@@ -456,7 +456,7 @@ class Puissance4View(discord.ui.View):
             )
             btn.callback = self.make_col_callback(col)
             self.add_item(btn)
- 
+
     def make_col_callback(self, col: int):
         async def callback(interaction: discord.Interaction):
             game = self.game
@@ -479,7 +479,7 @@ class Puissance4View(discord.ui.View):
                 game.bot_move()
             elif game.p2 and not game.winner:
                 game.current = 2 if game.current == 1 else 1
- 
+
             if game.winner or game.moves >= game.ROWS * game.COLS:
                 for child in self.children:
                     child.disabled = True
@@ -487,15 +487,15 @@ class Puissance4View(discord.ui.View):
                     db.add_points(str(game.p1.id), 25)
                 elif game.winner == 2 and game.p2:
                     db.add_points(str(game.p2.id), 25)
- 
+
             await interaction.response.edit_message(embed=game.build_embed(), view=self)
         return callback
- 
- 
+
+
 # ──────────────────────────────────────────
 #  SETUP /menu
 # ──────────────────────────────────────────
- 
+
 def setup_menu_command(tree, bot):
     @tree.command(name="menu", description="Ouvre le menu des mini-jeux permanents 🎮")
     async def menu(interaction: discord.Interaction):
