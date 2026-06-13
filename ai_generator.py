@@ -3,7 +3,7 @@ import os
 import json
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 PROMPTS = {
     "mais": """Génère un défi "X€ ou Y€ mais..." pour Discord francophone.
@@ -15,7 +15,7 @@ Format JSON strict :
   "contexte": "une phrase courte pour mettre en ambiance"
 }
 Le "mais" doit être créatif : humiliant, drôle, bizarre. Ex: "tu dois envoyer un vocal de toi qui chante faux chaque matin pendant une semaine".""",
- 
+
     "blindtest": """Génère un blind test textuel pour Discord francophone.
 Format JSON strict :
 {
@@ -27,14 +27,14 @@ Format JSON strict :
   "indice_bonus": "un indice supplémentaire sans révéler le titre"
 }
 Choisis des chansons variées : pop fr, rap fr, variété, années 80-2020s, BO de films connus.""",
- 
+
     "roi_indice": """Génère un indice pour deviner une personne mystère sur Discord.
 Format JSON strict :
 {
   "indice": "un indice vague sur la personnalité/comportements de la personne mystère, sans donner son nom"
 }
 L'indice doit être amusant et progressivement plus précis selon le numéro d'indice donné en contexte.""",
- 
+
     "sondage_absurde": """Génère un sondage absurde et fun pour Discord avec 4 options.
 Format JSON strict :
 {
@@ -42,7 +42,7 @@ Format JSON strict :
   "options": ["option 1", "option 2", "option 3", "option 4"],
   "emojis": ["🔴", "🟡", "🟢", "🔵"]
 }""",
- 
+
     "dilemme": """Génère un dilemme impossible drôle pour Discord francophone.
 Format JSON strict :
 {
@@ -51,14 +51,14 @@ Format JSON strict :
   "option_b": "description complète de B avec conséquences",
   "twist": "un détail absurde qui complique encore plus le choix"
 }""",
- 
+
     "deux_verites_mensonge_invite": """Génère un message pour inviter les membres à soumettre leurs 2 vérités 1 mensonge.
 Format JSON strict :
 {
   "invitation": "message fun pour inviter les gens à participer",
   "exemples": ["exemple de vérité", "exemple de mensonge drôle"]
 }""",
- 
+
     "recette": """Génère une liste d'ingrédients pour un jeu de recette impossible sur Discord.
 Format JSON strict :
 {
@@ -73,7 +73,7 @@ Format JSON strict :
   "contrainte": "une contrainte de préparation absurde"
 }
 Mélange des ingrédients normaux et complètement fous.""",
- 
+
     "olympiade_epreuve": """Génère une épreuve pour les Olympiades Discord.
 Format JSON strict :
 {
@@ -84,7 +84,7 @@ Format JSON strict :
   "critere_victoire": "comment les points seront attribués"
 }
 Exemples : épreuve de rapidité à répondre, épreuve créative, épreuve de connaissance...""",
- 
+
     "quiz_question": """Génère une question de quiz culture générale avec 4 propositions.
 Format JSON strict :
 {
@@ -94,7 +94,7 @@ Format JSON strict :
   "anecdote": "fait fun sur la réponse"
 }
 Mélange les propositions aléatoirement et indique l'index correct (0-3) dans bonne_reponse.""",
- 
+
     "champion_question": """Génère une question style quiz avec 4 propositions.
 Format JSON strict :
 {
@@ -106,25 +106,27 @@ Format JSON strict :
 }
 Mélange les propositions aléatoirement.""",
 }
- 
+
 async def generate_activity_content(activity_type: str, extra_context: str = "") -> dict:
     prompt = PROMPTS.get(activity_type, PROMPTS["dilemme"])
     if extra_context:
         prompt += f"\n\nContexte : {extra_context}"
- 
+
+    import random as _r
+    seed = _r.randint(1000, 9999)
     full_prompt = (
-        "Tu es un générateur de contenu fun pour serveur Discord francophone. "
+        f"[Seed: {seed}] Tu es un générateur de contenu fun pour serveur Discord francophone. "
         "Réponds UNIQUEMENT en JSON valide, sans texte avant/après, sans backticks.\n\n"
         + prompt
     )
- 
+
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
     payload = {
         "contents": [{"parts": [{"text": full_prompt}]}],
         "generationConfig": {"temperature": 0.9, "maxOutputTokens": 2048}
     }
- 
+
     async with aiohttp.ClientSession() as session:
         async with session.post(GEMINI_URL, headers=headers, params=params, json=payload) as resp:
             data = await resp.json()
@@ -149,5 +151,3 @@ async def generate_activity_content(activity_type: str, extra_context: str = "")
                 text = text[start:end]
             print(f"[GEMINI CLEAN] {repr(text[:300])}")
             return json.loads(text)
- 
- 
