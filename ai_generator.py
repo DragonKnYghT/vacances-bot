@@ -143,7 +143,7 @@ async def generate_activity_content(activity_type: str, extra_context: str = "")
         try:
             client = genai.Client(api_key=API_KEYS[current_key_index[0]])
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-3.5-flash",
                 contents=full_prompt,
             )
             text = response.text.strip()
