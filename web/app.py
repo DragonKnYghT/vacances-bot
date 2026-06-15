@@ -1,0 +1,563 @@
+"""
+Backend Flask pour le site web du bot Discord.
+Hébergé sur Render dans le même repo, dossier /web/
+"""
+
+import os
+import requests
+from flask import Flask, redirect, request, jsonify, session, url_for
+from flask_cors import CORS
+from pymongo import MongoClient
+from datetime import datetime, timedelta
+import jwt
+from functools import wraps
+
+app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
+CORS(app, origins=[
+    "https://dragonknYghT.github.io",   # ← remplace par ton GitHub Pages URL
+    "http://localhost:3000",             # pour le dev local
+    "http://127.0.0.1:5500",
+])
+
+# ── MongoDB ──────────────────────────────────────────────────────────────────
+MONGO_URI = os.environ.get("MONGO_URI")
+client = MongoClient(MONGO_URI)
+db = client["discord_bot"]             # ← même DB que le bot
+
+# ── Discord OAuth2 ───────────────────────────────────────────────────────────
+DISCORD_CLIENT_ID     = os.environ.get("DISCORD_CLIENT_ID")
+DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET")
+DISCORD_REDIRECT_URI  = os.environ.get("DISCORD_REDIRECT_URI")   # ex: https://ton-backend.onrender.com/auth/callback
+DISCORD_API_BASE      = "https://discord.com/api/v10"
+
+JWT_SECRET  = os.environ.get("JWT_SECRET", "jwt-secret-change-me")
+JWT_EXPIRES = 7  # jours
+
+# ── Classes disponibles ──────────────────────────────────────────────────────
+CLASSES = {
+    "guerrier": {
+        "name": "Guerrier ⚔️",
+        "description": "Réductions sur les améliorations de défense",
+        "bonuses": {"upgrade_discount": 0.15, "pixel_cost": 1.0, "shop_discount": 0.0}
+    },
+    "mage": {
+        "name": "Mage 🔮",
+        "description": "Bonus de points sur les quiz et activités",
+        "bonuses": {"upgrade_discount": 0.0, "pixel_cost": 1.0, "shop_discount": 0.10}
+    },
+    "architecte": {
+        "name": "Architecte 🏗️",
+        "description": "Pose de pixels moins chère",
+        "bonuses": {"upgrade_discount": 0.0, "pixel_cost": 0.5, "shop_discount": 0.0}
+    },
+    "marchand": {
+        "name": "Marchand 💰",
+        "description": "Réductions sur tous les achats en boutique",
+        "bonuses": {"upgrade_discount": 0.0, "pixel_cost": 1.0, "shop_discount": 0.20}
+    },
+    "explorateur": {
+        "name": "Explorateur 🗺️",
+        "description": "Débloque les nouvelles maps plus vite",
+        "bonuses": {"upgrade_discount": 0.0, "pixel_cost": 1.0, "shop_discount": 0.0, "map_discount": 0.25}
+    },
+}
+
+# ── Mondes / maps pixel ──────────────────────────────────────────────────────
+WORLDS = {
+    "monde_1": {"name": "La Forêt des Débuts", "required_nodes": [], "grid_size": 100},
+    "monde_2": {"name": "Les Plaines de Feu",  "required_nodes": ["foret_complete"], "grid_size": 100},
+    "monde_3": {"name": "L'Océan Profond",     "required_nodes": ["plaines_complete"], "grid_size": 100},
+    "monde_4": {"name": "Le Sommet des Dieux", "required_nodes": ["ocean_complete"], "grid_size": 100},
+}
+
+# ── Boutique ─────────────────────────────────────────────────────────────────
+SHOP_ITEMS = {
+    "pierre":  {"name": "Pierre 🪨",    "price": 10,  "category": "materiau"},
+    "bois":    {"name": "Bois 🪵",      "price": 8,   "category": "materiau"},
+    "fer":     {"name": "Fer ⚙️",       "price": 25,  "category": "materiau"},
+    "cristal": {"name": "Cristal 💎",   "price": 60,  "category": "materiau"},
+    "magie":   {"name": "Essence magique ✨", "price": 100, "category": "special"},
+    "pixel_1": {"name": "Pack Pixels ×10 🎨", "price": 50, "category": "pixel"},
+}
+
+# ── Skill tree ────────────────────────────────────────────────────────────────
+SKILL_TREE = {
+    "salle_reunion": {
+        "name": "Salle de réunion",
+        "description": "Permet de lancer des votes serveur",
+        "cost": {"pierre": 5, "bois": 3},
+        "requires": [],
+        "position": {"x": 400, "y": 50},
+        "unlocks": "monde_vote"
+    },
+    "forge": {
+        "name": "La Forge",
+        "description": "Réduit le coût des matériaux de 10%",
+        "cost": {"pierre": 10, "fer": 5},
+        "requires": ["salle_reunion"],
+        "position": {"x": 200, "y": 200},
+    },
+    "bibliotheque": {
+        "name": "Bibliothèque",
+        "description": "Bonus de +2pts sur les quiz",
+        "cost": {"bois": 15, "cristal": 2},
+        "requires": ["salle_reunion"],
+        "position": {"x": 600, "y": 200},
+    },
+    "foret_complete": {
+        "name": "Maîtrise de la Forêt",
+        "description": "Débloque le Monde 2 - Plaines de Feu",
+        "cost": {"pierre": 20, "bois": 20, "fer": 10},
+        "requires": ["forge", "bibliotheque"],
+        "position": {"x": 400, "y": 350},
+        "unlocks": "monde_2"
+    },
+    "plaines_complete": {
+        "name": "Maîtrise des Plaines",
+        "description": "Débloque le Monde 3 - Océan Profond",
+        "cost": {"fer": 30, "cristal": 10, "magie": 2},
+        "requires": ["foret_complete"],
+        "position": {"x": 400, "y": 500},
+        "unlocks": "monde_3"
+    },
+    "ocean_complete": {
+        "name": "Maîtrise de l'Océan",
+        "description": "Débloque le Monde 4 - Sommet des Dieux",
+        "cost": {"cristal": 30, "magie": 10},
+        "requires": ["plaines_complete"],
+        "position": {"x": 400, "y": 650},
+        "unlocks": "monde_4"
+    },
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def make_jwt(user_id: str, discord_token: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "discord_token": discord_token,
+        "exp": datetime.utcnow() + timedelta(days=JWT_EXPIRES)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+def decode_jwt(token: str) -> dict | None:
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+def require_auth(f):
+    """Décorateur : vérifie le JWT dans le header Authorization: Bearer <token>"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return jsonify({"error": "Non authentifié"}), 401
+        token = auth[7:]
+        payload = decode_jwt(token)
+        if not payload:
+            return jsonify({"error": "Token invalide ou expiré"}), 401
+        request.user_id = payload["user_id"]
+        request.discord_token = payload["discord_token"]
+        return f(*args, **kwargs)
+    return decorated
+
+def get_user_doc(user_id: str) -> dict:
+    """Récupère ou crée le document utilisateur dans MongoDB."""
+    doc = db.users.find_one({"discord_id": user_id})
+    if not doc:
+        doc = {
+            "discord_id": user_id,
+            "points": 0,
+            "vocal_points": 0,
+            "message_points": 0,
+            "activity_points": 0,
+            "minigame_points": 0,
+            "classe": None,
+            "materials": {},
+            "pixels_remaining": 0,
+            "unlocked_worlds": ["monde_1"],
+            "unlocked_nodes": [],
+            "created_at": datetime.utcnow()
+        }
+        db.users.insert_one(doc)
+    return doc
+
+def apply_class_discount(user_doc: dict, item_key: str, base_price: int) -> int:
+    classe = user_doc.get("classe")
+    if not classe or classe not in CLASSES:
+        return base_price
+    bonuses = CLASSES[classe]["bonuses"]
+    item = SHOP_ITEMS.get(item_key, {})
+    if item.get("category") == "pixel":
+        return int(base_price * bonuses.get("pixel_cost", 1.0))
+    discount = bonuses.get("shop_discount", 0.0)
+    return int(base_price * (1 - discount))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes OAuth2
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/auth/login")
+def auth_login():
+    """Redirige vers Discord pour l'autorisation."""
+    params = {
+        "client_id": DISCORD_CLIENT_ID,
+        "redirect_uri": DISCORD_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "identify guilds.members.read",
+    }
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    return redirect(f"https://discord.com/api/oauth2/authorize?{qs}")
+
+@app.route("/auth/callback")
+def auth_callback():
+    """Discord redirige ici avec un code. On l'échange contre un token."""
+    code = request.args.get("code")
+    if not code:
+        return jsonify({"error": "Code manquant"}), 400
+
+    # Échange du code contre un access token Discord
+    token_resp = requests.post(
+        f"{DISCORD_API_BASE}/oauth2/token",
+        data={
+            "client_id": DISCORD_CLIENT_ID,
+            "client_secret": DISCORD_CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": DISCORD_REDIRECT_URI,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    if not token_resp.ok:
+        return jsonify({"error": "Échec échange token Discord"}), 400
+
+    discord_token = token_resp.json()["access_token"]
+
+    # Récupère l'utilisateur Discord
+    user_resp = requests.get(
+        f"{DISCORD_API_BASE}/users/@me",
+        headers={"Authorization": f"Bearer {discord_token}"},
+    )
+    if not user_resp.ok:
+        return jsonify({"error": "Impossible de récupérer l'utilisateur"}), 400
+
+    discord_user = user_resp.json()
+    user_id = discord_user["id"]
+
+    # Crée/met à jour en base
+    db.users.update_one(
+        {"discord_id": user_id},
+        {"$set": {
+            "username": discord_user["username"],
+            "avatar": discord_user.get("avatar"),
+            "global_name": discord_user.get("global_name"),
+            "last_login": datetime.utcnow(),
+        }},
+        upsert=True
+    )
+    get_user_doc(user_id)  # s'assure que tous les champs existent
+
+    # Génère un JWT et redirige vers le site
+    token = make_jwt(user_id, discord_token)
+    site_url = os.environ.get("SITE_URL", "https://TON_USERNAME.github.io/vacances-bot")
+    return redirect(f"{site_url}/callback.html?token={token}")
+
+@app.route("/auth/me")
+@require_auth
+def auth_me():
+    """Renvoie les infos Discord de l'utilisateur connecté."""
+    resp = requests.get(
+        f"{DISCORD_API_BASE}/users/@me",
+        headers={"Authorization": f"Bearer {request.discord_token}"},
+    )
+    if not resp.ok:
+        return jsonify({"error": "Token Discord expiré"}), 401
+    return jsonify(resp.json())
+
+@app.route("/auth/logout", methods=["POST"])
+@require_auth
+def auth_logout():
+    return jsonify({"ok": True})
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes Profil
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/profile")
+@require_auth
+def get_profile():
+    doc = get_user_doc(request.user_id)
+    doc.pop("_id", None)
+
+    # Calcul du total de points
+    doc["total_points"] = (
+        doc.get("vocal_points", 0) +
+        doc.get("message_points", 0) +
+        doc.get("activity_points", 0) +
+        doc.get("minigame_points", 0)
+    )
+    # Classement global
+    pipeline = [
+        {"$addFields": {"total": {"$add": [
+            {"$ifNull": ["$vocal_points", 0]},
+            {"$ifNull": ["$message_points", 0]},
+            {"$ifNull": ["$activity_points", 0]},
+            {"$ifNull": ["$minigame_points", 0]},
+        ]}}},
+        {"$sort": {"total": -1}},
+        {"$group": {"_id": None, "ids": {"$push": "$discord_id"}}},
+    ]
+    result = list(db.users.aggregate(pipeline))
+    if result and request.user_id in result[0]["ids"]:
+        doc["rank"] = result[0]["ids"].index(request.user_id) + 1
+    else:
+        doc["rank"] = None
+
+    return jsonify(doc)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes Boutique
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/shop")
+@require_auth
+def get_shop():
+    doc = get_user_doc(request.user_id)
+    items = []
+    for key, item in SHOP_ITEMS.items():
+        discounted = apply_class_discount(doc, key, item["price"])
+        items.append({
+            "id": key,
+            "name": item["name"],
+            "base_price": item["price"],
+            "price": discounted,
+            "category": item["category"],
+            "discounted": discounted < item["price"],
+        })
+    return jsonify({"items": items, "user_points": doc.get("points", 0)})
+
+@app.route("/api/shop/buy", methods=["POST"])
+@require_auth
+def buy_item():
+    data = request.get_json()
+    item_key = data.get("item")
+    qty = int(data.get("quantity", 1))
+
+    if item_key not in SHOP_ITEMS:
+        return jsonify({"error": "Article inconnu"}), 404
+
+    doc = get_user_doc(request.user_id)
+    price = apply_class_discount(doc, item_key, SHOP_ITEMS[item_key]["price"]) * qty
+    current_points = doc.get("points", 0)
+
+    if current_points < price:
+        return jsonify({"error": "Pas assez de points"}), 400
+
+    # Mise à jour
+    mat_field = f"materials.{item_key}"
+    update = {"$inc": {"points": -price, mat_field: qty}}
+
+    if item_key == "pixel_1":
+        update["$inc"]["pixels_remaining"] = 10 * qty
+
+    db.users.update_one({"discord_id": request.user_id}, update)
+    return jsonify({"ok": True, "spent": price, "remaining_points": current_points - price})
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes Skill Tree
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/skilltree")
+@require_auth
+def get_skilltree():
+    doc = get_user_doc(request.user_id)
+    unlocked = doc.get("unlocked_nodes", [])
+    materials = doc.get("materials", {})
+
+    nodes = []
+    for key, node in SKILL_TREE.items():
+        can_unlock = all(r in unlocked for r in node["requires"])
+        affordable = all(
+            materials.get(mat, 0) >= qty
+            for mat, qty in node["cost"].items()
+        )
+        nodes.append({
+            "id": key,
+            "name": node["name"],
+            "description": node["description"],
+            "cost": node["cost"],
+            "requires": node["requires"],
+            "position": node["position"],
+            "unlocked": key in unlocked,
+            "can_unlock": can_unlock and key not in unlocked,
+            "affordable": affordable and can_unlock and key not in unlocked,
+            "unlocks": node.get("unlocks"),
+        })
+
+    return jsonify({"nodes": nodes, "unlocked": unlocked, "materials": materials})
+
+@app.route("/api/skilltree/unlock", methods=["POST"])
+@require_auth
+def unlock_node():
+    data = request.get_json()
+    node_key = data.get("node")
+
+    if node_key not in SKILL_TREE:
+        return jsonify({"error": "Nœud inconnu"}), 404
+
+    node = SKILL_TREE[node_key]
+    doc = get_user_doc(request.user_id)
+    unlocked = doc.get("unlocked_nodes", [])
+    materials = doc.get("materials", {})
+
+    if node_key in unlocked:
+        return jsonify({"error": "Déjà débloqué"}), 400
+    if not all(r in unlocked for r in node["requires"]):
+        return jsonify({"error": "Prérequis manquants"}), 400
+    for mat, qty in node["cost"].items():
+        if materials.get(mat, 0) < qty:
+            return jsonify({"error": f"Pas assez de {mat}"}), 400
+
+    # Déduire les matériaux
+    inc = {f"materials.{mat}": -qty for mat, qty in node["cost"].items()}
+    inc_update = {"$inc": inc, "$push": {"unlocked_nodes": node_key}}
+
+    # Déverrouillle un monde si applicable
+    if "unlocks" in node:
+        inc_update["$addToSet"] = {"unlocked_worlds": node["unlocks"]}
+
+    db.users.update_one({"discord_id": request.user_id}, inc_update)
+    return jsonify({"ok": True, "unlocked": node_key, "new_world": node.get("unlocks")})
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes Pixel Map
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/pixelmap/<world_id>")
+@require_auth
+def get_pixelmap(world_id):
+    if world_id not in WORLDS:
+        return jsonify({"error": "Monde inconnu"}), 404
+
+    doc = get_user_doc(request.user_id)
+    if world_id not in doc.get("unlocked_worlds", ["monde_1"]):
+        return jsonify({"error": "Monde verrouillé"}), 403
+
+    # Récupère tous les pixels de ce monde
+    pixels = list(db.pixels.find(
+        {"world": world_id},
+        {"_id": 0, "x": 1, "y": 1, "color": 1, "placed_by": 1, "placed_at": 1}
+    ))
+
+    return jsonify({
+        "world": WORLDS[world_id],
+        "pixels": pixels,
+        "grid_size": WORLDS[world_id]["grid_size"],
+        "user_pixels_remaining": doc.get("pixels_remaining", 0),
+    })
+
+@app.route("/api/pixelmap/<world_id>/place", methods=["POST"])
+@require_auth
+def place_pixel(world_id):
+    if world_id not in WORLDS:
+        return jsonify({"error": "Monde inconnu"}), 404
+
+    doc = get_user_doc(request.user_id)
+    if world_id not in doc.get("unlocked_worlds", ["monde_1"]):
+        return jsonify({"error": "Monde verrouillé"}), 403
+
+    pixels_left = doc.get("pixels_remaining", 0)
+    if pixels_left <= 0:
+        return jsonify({"error": "Plus de pixels disponibles"}), 400
+
+    data = request.get_json()
+    x, y, color = int(data["x"]), int(data["y"]), str(data["color"])
+    size = WORLDS[world_id]["grid_size"]
+
+    if not (0 <= x < size and 0 <= y < size):
+        return jsonify({"error": "Coordonnées hors grille"}), 400
+    if not color.startswith("#") or len(color) not in (4, 7):
+        return jsonify({"error": "Couleur invalide"}), 400
+
+    db.pixels.update_one(
+        {"world": world_id, "x": x, "y": y},
+        {"$set": {
+            "color": color,
+            "placed_by": request.user_id,
+            "placed_at": datetime.utcnow(),
+        }},
+        upsert=True
+    )
+    db.users.update_one({"discord_id": request.user_id}, {"$inc": {"pixels_remaining": -1}})
+
+    return jsonify({"ok": True, "pixels_remaining": pixels_left - 1})
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes Classes
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/classes")
+def get_classes():
+    return jsonify({"classes": CLASSES})
+
+@app.route("/api/classes/choose", methods=["POST"])
+@require_auth
+def choose_class():
+    data = request.get_json()
+    classe = data.get("classe")
+
+    if classe not in CLASSES:
+        return jsonify({"error": "Classe inconnue"}), 404
+
+    doc = get_user_doc(request.user_id)
+    if doc.get("classe"):
+        return jsonify({"error": "Tu as déjà choisi une classe"}), 400
+
+    db.users.update_one(
+        {"discord_id": request.user_id},
+        {"$set": {"classe": classe}}
+    )
+    return jsonify({"ok": True, "classe": classe})
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes Classement
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/leaderboard")
+def get_leaderboard():
+    pipeline = [
+        {"$addFields": {"total": {"$add": [
+            {"$ifNull": ["$vocal_points", 0]},
+            {"$ifNull": ["$message_points", 0]},
+            {"$ifNull": ["$activity_points", 0]},
+            {"$ifNull": ["$minigame_points", 0]},
+        ]}}},
+        {"$sort": {"total": -1}},
+        {"$limit": 20},
+        {"$project": {
+            "_id": 0,
+            "discord_id": 1,
+            "username": 1,
+            "global_name": 1,
+            "avatar": 1,
+            "classe": 1,
+            "total": 1,
+            "vocal_points": 1,
+            "message_points": 1,
+            "activity_points": 1,
+            "minigame_points": 1,
+        }}
+    ]
+    results = list(db.users.aggregate(pipeline))
+    return jsonify({"leaderboard": results})
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)

@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Map — Serveur Vacances</title>
+    <link rel="stylesheet" href="/static/css/global.css">
+    <style>
+        body { overflow: hidden; }
+
+        .pm-layout {
+            display: flex;
+            height: calc(100vh - 56px);
+        }
+
+        /* ── Sidebar ── */
+        .pm-sidebar {
+            width: 260px;
+            min-width: 260px;
+            background: var(--bg2);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 1.25rem;
+            gap: 1.25rem;
+            overflow-y: auto;
+        }
+        .pm-sidebar h2 { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; margin-bottom: .6rem; }
+
+        /* Monde tabs */
+        .world-tab {
+            display: flex; align-items: center; gap: .6rem;
+            padding: .6rem .85rem; border-radius: 8px;
+            cursor: pointer; font-size: .9rem; font-weight: 600;
+            border: 1.5px solid transparent;
+            transition: all .15s;
+        }
+        .world-tab:hover  { background: var(--bg3); }
+        .world-tab.active { border-color: var(--accent); background: rgba(124,92,252,.1); color: var(--accent); }
+        .world-tab.locked { opacity: .4; cursor: not-allowed; }
+
+        /* Palette */
+        .palette {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 5px;
+        }
+        .color-swatch {
+            width: 100%; aspect-ratio: 1;
+            border-radius: 5px; cursor: pointer;
+            border: 2.5px solid transparent;
+            transition: transform .1s, border-color .1s;
+        }
+        .color-swatch:hover    { transform: scale(1.15); }
+        .color-swatch.selected { border-color: #fff; transform: scale(1.2); }
+
+        /* Custom color */
+        .custom-color-row {
+            display: flex; align-items: center; gap: .6rem;
+        }
+        #custom-color {
+            width: 40px; height: 40px; padding: 0;
+            border: none; border-radius: 8px; cursor: pointer;
+            background: none;
+        }
+        .custom-label { font-size: .85rem; color: var(--muted); }
+
+        /* Pixels restants */
+        .pixels-badge {
+            display: flex; align-items: center; justify-content: space-between;
+            background: var(--bg3); border-radius: 8px; padding: .6rem .85rem;
+            font-size: .9rem;
+        }
+        .pixels-badge .count { font-weight: 800; color: var(--accent); font-size: 1.1rem; }
+
+        /* Infos pixel survolé */
+        #hover-info {
+            background: var(--bg3); border-radius: 8px; padding: .6rem .85rem;
+            font-size: .82rem; color: var(--muted); min-height: 48px;
+            line-height: 1.6;
+        }
+        #hover-info strong { color: var(--text); }
+
+        /* Outils */
+        .tool-row { display: flex; gap: .5rem; }
+        .tool-btn {
+            flex: 1; padding: .5rem; border-radius: 8px; font-size: .8rem;
+            font-weight: 600; cursor: pointer; border: 1.5px solid var(--border);
+            background: var(--bg3); color: var(--text); transition: all .15s;
+        }
+        .tool-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(124,92,252,.1); }
+        .tool-btn:hover  { border-color: var(--accent); }
+
+        /* Zoom */
+        .zoom-row { display: flex; align-items: center; gap: .5rem; font-size: .85rem; }
+        #zoom-label { color: var(--muted); min-width: 40px; text-align: center; }
+
+        /* ── Canvas ── */
+        .pm-canvas-wrap {
+            flex: 1; overflow: hidden; position: relative;
+            background: repeating-conic-gradient(#1a1a2e 0% 25%, #161628 0% 50%) 0 0 / 20px 20px;
+            cursor: crosshair;
+        }
+        #pm-canvas {
+            position: absolute;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        #pm-canvas.pan-mode { cursor: grab; }
+        #pm-canvas.pan-mode:active { cursor: grabbing; }
+
+        /* Overlay coords */
+        #coords-overlay {
+            position: absolute; bottom: .75rem; right: .75rem;
+            background: rgba(14,15,26,.85); border: 1px solid var(--border);
+            border-radius: 8px; padding: .4rem .75rem;
+            font-size: .8rem; color: var(--muted); font-family: monospace;
+            pointer-events: none;
+        }
+
+        /* Flash pixel placé */
+        @keyframes flashPlaced {
+            0%   { box-shadow: 0 0 0 0 rgba(61,214,140,.7); }
+            100% { box-shadow: 0 0 0 12px rgba(61,214,140,0); }
+        }
+
+        /* Loading overlay */
+        #map-loader {
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(14,15,26,.7); z-index: 10; gap: .75rem;
+        }
+
+        @media (max-width: 700px) {
+            .pm-sidebar { width: 200px; min-width: 200px; }
+            .palette { grid-template-columns: repeat(5, 1fr); }
+        }
+    </style>
+</head>
+<body>
+<div id="nav-placeholder"></div>
+
+<div class="pm-layout">
+    <!-- Sidebar -->
+    <div class="pm-sidebar">
+
+        <div>
+            <h2>🌍 Monde</h2>
+            <div id="world-tabs"></div>
+        </div>
+
+        <div>
+            <h2>🎨 Couleur</h2>
+            <div class="palette" id="palette"></div>
+            <div class="custom-color-row" style="margin-top:.6rem">
+                <input type="color" id="custom-color" value="#7c5cfc" title="Couleur personnalisée">
+                <span class="custom-label">Couleur perso</span>
+            </div>
+        </div>
+
+        <div>
+            <h2>🖱️ Outil</h2>
+            <div class="tool-row">
+                <button class="tool-btn active" data-tool="draw" id="tool-draw">✏️ Dessin</button>
+                <button class="tool-btn" data-tool="pan" id="tool-pan">✋ Pan</button>
+            </div>
+        </div>
+
+        <div>
+            <h2>🎯 Pixels</h2>
+            <div class="pixels-badge">
+                <span>Restants</span>
+                <span class="count" id="pixels-left">—</span>
+            </div>
+            <div style="margin-top:.5rem;font-size:.8rem;color:var(--muted)">
+                Achète des pixels en <a href="/shop.html">boutique →</a>
+            </div>
+        </div>
+
+        <div>
+            <h2>🔍 Zoom</h2>
+            <div class="zoom-row">
+                <button class="tool-btn" id="btn-zoom-out">−</button>
+                <span id="zoom-label">100%</span>
+                <button class="tool-btn" id="btn-zoom-in">+</button>
+            </div>
+            <button class="tool-btn" style="width:100%;margin-top:.4rem" id="btn-zoom-fit">Ajuster ⌂</button>
+        </div>
+
+        <div>
+            <h2>📍 Survol</h2>
+            <div id="hover-info">Survole la grille pour voir les infos.</div>
+        </div>
+
+    </div>
+
+    <!-- Canvas -->
+    <div class="pm-canvas-wrap" id="pm-wrap">
+        <canvas id="pm-canvas"></canvas>
+        <div id="coords-overlay">x:— y:—</div>
+        <div id="map-loader">
+            <div class="spinner"></div>
+            <span style="color:var(--muted)">Chargement de la carte...</span>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+import { api, isLoggedIn } from "/static/js/api.js";
+import { renderNav, loadNavUser, requireAuth, toast, fmt } from "/static/js/ui.js";
+
+renderNav("pixelmap");
+if (!requireAuth()) throw new Error("not auth");
+
+// ── Palette de couleurs ──────────────────────────────────────────────────
+const PALETTE = [
+    "#ffffff","#e2e4f0","#7a7f9a","#0e0f1a",
+    "#f05c5c","#f5a742","#f5c542","#3dd68c",
+    "#5ca8f0","#7c5cfc","#e05cf0","#f05ca8",
+    "#8b4513","#228b22","#1e90ff","#ffd700",
+    "#ff6347","#40e0d0","#ee82ee","#000080",
+    "#ff1493","#00ced1","#adff2f","#dc143c",
+];
+
+// ── État ─────────────────────────────────────────────────────────────────
+const GRID   = 100;
+let currentWorld  = "monde_1";
+let pixels        = {};       // "x,y" → color
+let selectedColor = "#7c5cfc";
+let pixelsLeft    = 0;
+let tool          = "draw";   // draw | pan
+let profile       = null;
+let unlockedWorlds = ["monde_1"];
+
+// ── Canvas / viewport ─────────────────────────────────────────────────────
+const canvas  = document.getElementById("pm-canvas");
+const ctx     = canvas.getContext("2d");
+const wrap    = document.getElementById("pm-wrap");
+
+let cellSize = 6;
+let offsetX  = 0;
+let offsetY  = 0;
+let isPainting = false;
+let isPanning  = false;
+let panStart   = null;
+
+const WORLDS_META = {
+    monde_1: { name: "La Forêt des Débuts", icon: "🌲" },
+    monde_2: { name: "Les Plaines de Feu",  icon: "🔥" },
+    monde_3: { name: "L'Océan Profond",     icon: "🌊" },
+    monde_4: { name: "Le Sommet des Dieux", icon: "⛰️" },
+};
+
+// ── Resize ────────────────────────────────────────────────────────────────
+function resizeCanvas() {
+    const r = wrap.getBoundingClientRect();
+    canvas.width  = r.width;
+    canvas.height = r.height;
+    draw();
+}
+window.addEventListener("resize", resizeCanvas);
+
+// ── Dessin ────────────────────────────────────────────────────────────────
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Fond
+    ctx.fillStyle = "#0e0f1a";
+    ctx.fillRect(offsetX, offsetY, GRID * cellSize, GRID * cellSize);
+
+    // Pixels posés
+    for (const [key, color] of Object.entries(pixels)) {
+        const [gx, gy] = key.split(",").map(Number);
+        ctx.fillStyle = color;
+        ctx.fillRect(offsetX + gx * cellSize, offsetY + gy * cellSize, cellSize, cellSize);
+    }
+
+    // Grille (seulement si cellSize >= 4)
+    if (cellSize >= 4) {
+        ctx.strokeStyle = "rgba(42,45,74,0.6)";
+        ctx.lineWidth   = 0.5;
+        for (let i = 0; i <= GRID; i++) {
+            ctx.beginPath();
+            ctx.moveTo(offsetX + i * cellSize, offsetY);
+            ctx.lineTo(offsetX + i * cellSize, offsetY + GRID * cellSize);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(offsetX, offsetY + i * cellSize);
+            ctx.lineTo(offsetX + GRID * cellSize, offsetY + i * cellSize);
+            ctx.stroke();
+        }
+    }
+
+    // Bordure de la grille
+    ctx.strokeStyle = "#2a2d4a";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(offsetX, offsetY, GRID * cellSize, GRID * cellSize);
+}
+
+// ── Coord helpers ─────────────────────────────────────────────────────────
+function canvasToGrid(cx, cy) {
+    return {
+        gx: Math.floor((cx - offsetX) / cellSize),
+        gy: Math.floor((cy - offsetY) / cellSize),
+    };
+}
+
+function inGrid(gx, gy) {
+    return gx >= 0 && gx < GRID && gy >= 0 && gy < GRID;
+}
+
+function fitView() {
+    const r = wrap.getBoundingClientRect();
+    cellSize = Math.floor(Math.min(r.width, r.height) / GRID * 0.92);
+    cellSize = Math.max(cellSize, 2);
+    offsetX  = Math.floor((r.width  - GRID * cellSize) / 2);
+    offsetY  = Math.floor((r.height - GRID * cellSize) / 2);
+    updateZoomLabel();
+    draw();
+}
+
+function updateZoomLabel() {
+    document.getElementById("zoom-label").textContent = `${Math.round(cellSize * 100 / 6)}%`;
+}
+
+// ── Placement pixel ───────────────────────────────────────────────────────
+async function placePixelAt(gx, gy) {
+    if (!inGrid(gx, gy)) return;
+    if (pixelsLeft <= 0) { toast("Plus de pixels ! Achète des packs en boutique.", "error"); return; }
+
+    const key = `${gx},${gy}`;
+    const prevColor = pixels[key];
+    if (prevColor === selectedColor) return;
+
+    // Optimistic update
+    pixels[key] = selectedColor;
+    draw();
+    pixelsLeft--;
+    document.getElementById("pixels-left").textContent = pixelsLeft;
+
+    try {
+        await api.placePixel(currentWorld, gx, gy, selectedColor);
+    } catch(e) {
+        // Rollback
+        if (prevColor) pixels[key] = prevColor;
+        else delete pixels[key];
+        draw();
+        pixelsLeft++;
+        document.getElementById("pixels-left").textContent = pixelsLeft;
+        toast(e.message, "error");
+    }
+}
+
+// ── Événements canvas ─────────────────────────────────────────────────────
+canvas.addEventListener("mousedown", e => {
+    if (tool === "pan") {
+        isPanning = true;
+        panStart  = { x: e.clientX - offsetX, y: e.clientY - offsetY };
+        return;
+    }
+    isPainting = true;
+    const { gx, gy } = canvasToGrid(e.offsetX, e.offsetY);
+    placePixelAt(gx, gy);
+});
+
+canvas.addEventListener("mousemove", e => {
+    const { gx, gy } = canvasToGrid(e.offsetX, e.offsetY);
+    document.getElementById("coords-overlay").textContent = inGrid(gx, gy) ? `x:${gx} y:${gy}` : "hors grille";
+
+    // Hover info
+    if (inGrid(gx, gy)) {
+        const key   = `${gx},${gy}`;
+        const color = pixels[key];
+        document.getElementById("hover-info").innerHTML = color
+            ? `<strong>x:${gx}, y:${gy}</strong><br>Couleur : <span style="display:inline-block;width:12px;height:12px;background:${color};border-radius:3px;vertical-align:middle"></span> ${color}`
+            : `<strong>x:${gx}, y:${gy}</strong><br><span style="color:var(--muted)">Vide</span>`;
+    }
+
+    if (isPanning && panStart) {
+        offsetX = e.clientX - panStart.x;
+        offsetY = e.clientY - panStart.y;
+        draw();
+        return;
+    }
+    if (isPainting) {
+        placePixelAt(gx, gy);
+    }
+});
+
+canvas.addEventListener("mouseup",   () => { isPainting = false; isPanning = false; panStart = null; });
+canvas.addEventListener("mouseleave", () => { isPainting = false; isPanning = false; panStart = null; });
+
+canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+    const factor  = e.deltaY < 0 ? 1.15 : 0.87;
+    const newSize = Math.max(2, Math.min(40, cellSize * factor));
+    const mx = e.offsetX;
+    const my = e.offsetY;
+    offsetX = mx - (mx - offsetX) * (newSize / cellSize);
+    offsetY = my - (my - offsetY) * (newSize / cellSize);
+    cellSize = Math.round(newSize);
+    updateZoomLabel();
+    draw();
+}, { passive: false });
+
+// Touch support (mobile)
+let lastTouch = null;
+canvas.addEventListener("touchstart", e => {
+    if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const r = canvas.getBoundingClientRect();
+        const { gx, gy } = canvasToGrid(t.clientX - r.left, t.clientY - r.top);
+        placePixelAt(gx, gy);
+    }
+    lastTouch = e.touches;
+}, { passive: true });
+canvas.addEventListener("touchmove", e => {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+        // Pinch zoom
+        const d0 = Math.hypot(lastTouch[0].clientX - lastTouch[1].clientX, lastTouch[0].clientY - lastTouch[1].clientY);
+        const d1 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        const factor = d1 / d0;
+        cellSize = Math.max(2, Math.min(40, Math.round(cellSize * factor)));
+        updateZoomLabel();
+        draw();
+    }
+    lastTouch = e.touches;
+}, { passive: false });
+
+// ── Zoom boutons ──────────────────────────────────────────────────────────
+document.getElementById("btn-zoom-in").onclick  = () => { cellSize = Math.min(40, cellSize + 1); updateZoomLabel(); draw(); };
+document.getElementById("btn-zoom-out").onclick = () => { cellSize = Math.max(2,  cellSize - 1); updateZoomLabel(); draw(); };
+document.getElementById("btn-zoom-fit").onclick  = fitView;
+
+// ── Outils ────────────────────────────────────────────────────────────────
+document.querySelectorAll(".tool-btn[data-tool]").forEach(btn => {
+    btn.addEventListener("click", () => {
+        tool = btn.dataset.tool;
+        document.querySelectorAll(".tool-btn[data-tool]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        canvas.className = tool === "pan" ? "pan-mode" : "";
+    });
+});
+
+// ── Palette ───────────────────────────────────────────────────────────────
+function buildPalette() {
+    const el = document.getElementById("palette");
+    PALETTE.forEach(color => {
+        const sw = document.createElement("div");
+        sw.className = "color-swatch";
+        sw.style.background = color;
+        if (color === selectedColor) sw.classList.add("selected");
+        sw.addEventListener("click", () => {
+            selectedColor = color;
+            document.querySelectorAll(".color-swatch").forEach(s => s.classList.remove("selected"));
+            sw.classList.add("selected");
+            document.getElementById("custom-color").value = color;
+        });
+        el.appendChild(sw);
+    });
+}
+buildPalette();
+
+document.getElementById("custom-color").addEventListener("input", e => {
+    selectedColor = e.target.value;
+    document.querySelectorAll(".color-swatch").forEach(s => s.classList.remove("selected"));
+});
+
+// ── Monde tabs ────────────────────────────────────────────────────────────
+function buildWorldTabs() {
+    const el = document.getElementById("world-tabs");
+    el.innerHTML = "";
+    for (const [id, meta] of Object.entries(WORLDS_META)) {
+        const isUnlocked = unlockedWorlds.includes(id);
+        const tab = document.createElement("div");
+        tab.className = `world-tab ${id === currentWorld ? "active" : ""} ${!isUnlocked ? "locked" : ""}`;
+        tab.innerHTML = `${meta.icon} ${meta.name}`;
+        if (isUnlocked) {
+            tab.addEventListener("click", () => loadWorld(id));
+        } else {
+            tab.title = "Débloque ce monde dans le Skill Tree";
+        }
+        el.appendChild(tab);
+    }
+}
+
+// ── Chargement monde ──────────────────────────────────────────────────────
+async function loadWorld(worldId) {
+    if (worldId === currentWorld && Object.keys(pixels).length > 0) return;
+    currentWorld = worldId;
+
+    // Update tabs
+    document.querySelectorAll(".world-tab").forEach(t => t.classList.remove("active"));
+    document.querySelector(`.world-tab:nth-child(${Object.keys(WORLDS_META).indexOf(worldId) + 1})`)?.classList.add("active");
+
+    document.getElementById("map-loader").style.display = "flex";
+    pixels = {};
+
+    try {
+        const data = await api.getPixelMap(worldId);
+        pixelsLeft = data.user_pixels_remaining;
+        document.getElementById("pixels-left").textContent = pixelsLeft;
+
+        // Remplir pixels
+        for (const p of data.pixels) {
+            pixels[`${p.x},${p.y}`] = p.color;
+        }
+        resizeCanvas();
+        fitView();
+    } catch(e) {
+        if (e.message.includes("verrouillé")) {
+            toast("Ce monde est verrouillé ! Débloque-le dans le Skill Tree.", "error");
+        } else {
+            toast(e.message, "error");
+        }
+    } finally {
+        document.getElementById("map-loader").style.display = "none";
+    }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+    profile = await api.getProfile();
+    window.__profile = profile;
+    await loadNavUser();
+    unlockedWorlds = profile.unlocked_worlds || ["monde_1"];
+    buildWorldTabs();
+    resizeCanvas();
+    await loadWorld("monde_1");
+}
+
+init().catch(console.error);
+</script>
+</body>
+</html>

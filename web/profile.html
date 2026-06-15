@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profil — Serveur Vacances</title>
+    <link rel="stylesheet" href="/static/css/global.css">
+    <style>
+        /* ── Header profil ── */
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 1.5rem;
+        }
+        .profile-header img {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            border: 3px solid var(--accent);
+        }
+        .profile-header h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: .3rem; }
+        .profile-header .meta { color: var(--muted); font-size: .9rem; display: flex; gap: .75rem; flex-wrap: wrap; }
+
+        /* ── Stats grid ── */
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+        @media (max-width: 700px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+
+        .stat-card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.2rem;
+        }
+        .stat-card .icon { font-size: 1.5rem; margin-bottom: .5rem; }
+        .stat-card .val  { font-size: 1.8rem; font-weight: 800; }
+        .stat-card .lbl  { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+
+        /* ── Matériaux ── */
+        .materials {
+            display: flex; gap: .75rem; flex-wrap: wrap;
+        }
+        .mat-badge {
+            display: flex; align-items: center; gap: .4rem;
+            background: var(--bg3); border: 1px solid var(--border);
+            border-radius: 8px; padding: .4rem .8rem;
+            font-size: .9rem; font-weight: 600;
+        }
+        .mat-badge .mat-icon { font-size: 1.1rem; }
+
+        /* ── Classe ── */
+        .classe-card {
+            background: linear-gradient(135deg, rgba(124,92,252,.15), var(--bg2));
+            border: 1px solid var(--accent);
+            border-radius: var(--radius);
+            padding: 1.25rem 1.5rem;
+        }
+        .classe-name { font-size: 1.2rem; font-weight: 800; color: var(--accent); }
+        .classe-desc { color: var(--muted); font-size: .9rem; margin-top: .3rem; }
+        .classe-bonus { margin-top: .75rem; font-size: .85rem; }
+        .classe-bonus span { color: var(--green); font-weight: 700; }
+
+        /* ── Choix de classe ── */
+        .classes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; }
+        @media (max-width: 600px) { .classes-grid { grid-template-columns: 1fr 1fr; } }
+
+        .class-option {
+            background: var(--bg3); border: 2px solid var(--border);
+            border-radius: 10px; padding: 1rem;
+            cursor: pointer; transition: border-color .2s, background .2s;
+            text-align: center;
+        }
+        .class-option:hover { border-color: var(--accent); background: rgba(124,92,252,.08); }
+        .class-option .cls-icon { font-size: 2rem; margin-bottom: .4rem; }
+        .class-option .cls-name { font-weight: 700; font-size: .95rem; }
+        .class-option .cls-desc { font-size: .78rem; color: var(--muted); margin-top: .3rem; line-height: 1.4; }
+
+        /* ── Mondes débloqués ── */
+        .world-list { display: flex; gap: .75rem; flex-wrap: wrap; }
+        .world-badge {
+            display: flex; align-items: center; gap: .5rem;
+            background: var(--bg3); border: 1px solid var(--border);
+            border-radius: 8px; padding: .5rem 1rem;
+            font-size: .9rem;
+        }
+        .world-badge.unlocked { border-color: var(--green); color: var(--green); }
+        .world-badge.locked   { color: var(--muted); }
+
+        section { margin-bottom: 1.5rem; }
+        section > h2 { font-size: 1rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; margin-bottom: .75rem; }
+    </style>
+</head>
+<body>
+<div id="main-content">
+    <div class="loader"><div class="spinner"></div><span>Chargement du profil...</span></div>
+</div>
+
+<script type="module">
+import { api, isLoggedIn, discordAvatar } from "/static/js/api.js";
+import { renderNav, loadNavUser, requireAuth, toast, fmt } from "/static/js/ui.js";
+
+renderNav("profile");
+if (!requireAuth()) throw new Error("not auth");
+
+const WORLDS = {
+    monde_1: { name: "La Forêt des Débuts", icon: "🌲" },
+    monde_2: { name: "Les Plaines de Feu",  icon: "🔥" },
+    monde_3: { name: "L'Océan Profond",     icon: "🌊" },
+    monde_4: { name: "Le Sommet des Dieux", icon: "⛰️" },
+};
+
+const CLASSES_INFO = {
+    guerrier:    { bonus_text: "−15% sur les améliorations" },
+    mage:        { bonus_text: "−10% en boutique" },
+    architecte:  { bonus_text: "Pixels à moitié prix" },
+    marchand:    { bonus_text: "−20% en boutique" },
+    explorateur: { bonus_text: "−25% pour débloquer les maps" },
+};
+
+const MAT_ICONS = { pierre:"🪨", bois:"🪵", fer:"⚙️", cristal:"💎", magie:"✨" };
+
+async function init() {
+    const [profile, classesResp] = await Promise.all([api.getProfile(), api.getClasses()]);
+    window.__profile = profile;
+    await loadNavUser();
+
+    const classes = classesResp.classes;
+    const avatarUrl = discordAvatar(profile.discord_id, profile.avatar, 160);
+
+    document.getElementById("main-content").innerHTML = `
+        <div class="page">
+            <!-- Header -->
+            <div class="profile-header">
+                <img src="${avatarUrl}" alt="avatar">
+                <div>
+                    <h1>${profile.global_name || profile.username || "Joueur"}</h1>
+                    <div class="meta">
+                        <span>🏅 Rang #${profile.rank ?? "?"}</span>
+                        <span>💠 ${fmt(profile.total_points)} pts total</span>
+                        ${profile.classe ? `<span class="tag purple">${classes[profile.classe]?.name}</span>` : '<span class="tag">Aucune classe</span>'}
+                        <span>🎨 ${profile.pixels_remaining ?? 0} pixels restants</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <section>
+                <h2>Points par catégorie</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="icon">🎙️</div>
+                        <div class="val">${fmt(profile.vocal_points)}</div>
+                        <div class="lbl">Vocal</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon">💬</div>
+                        <div class="val">${fmt(profile.message_points)}</div>
+                        <div class="lbl">Messages</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon">📅</div>
+                        <div class="val">${fmt(profile.activity_points)}</div>
+                        <div class="lbl">Activités</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon">🎮</div>
+                        <div class="val">${fmt(profile.minigame_points)}</div>
+                        <div class="lbl">Mini-jeux</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Classe -->
+            <section>
+                <h2>Classe</h2>
+                ${profile.classe
+                    ? `<div class="classe-card">
+                        <div class="classe-name">${classes[profile.classe]?.name}</div>
+                        <div class="classe-desc">${classes[profile.classe]?.description}</div>
+                        <div class="classe-bonus">Bonus actif : <span>${CLASSES_INFO[profile.classe]?.bonus_text || ""}</span></div>
+                       </div>`
+                    : `<div class="card" style="margin-bottom:.75rem">
+                        <h2>Choisis ta classe</h2>
+                        <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">Une fois choisie, elle est permanente !</p>
+                        <div class="classes-grid" id="classes-grid"></div>
+                       </div>`
+                }
+            </section>
+
+            <!-- Matériaux -->
+            <section>
+                <h2>Matériaux</h2>
+                <div class="card">
+                    <div class="materials" id="materials-list"></div>
+                </div>
+            </section>
+
+            <!-- Mondes -->
+            <section>
+                <h2>Mondes débloqués</h2>
+                <div class="card">
+                    <div class="world-list" id="world-list"></div>
+                </div>
+            </section>
+        </div>
+    `;
+
+    // Matériaux
+    const matContainer = document.getElementById("materials-list");
+    if (matContainer) {
+        const mats = profile.materials || {};
+        const hasMats = Object.values(mats).some(v => v > 0);
+        if (!hasMats) {
+            matContainer.innerHTML = `<span style="color:var(--muted);font-size:.9rem">Aucun matériau — va à la <a href="/shop.html">boutique</a> !</span>`;
+        } else {
+            for (const [key, qty] of Object.entries(mats)) {
+                if (qty > 0) {
+                    matContainer.innerHTML += `
+                        <div class="mat-badge">
+                            <span class="mat-icon">${MAT_ICONS[key] || "📦"}</span>
+                            <span>${qty}×</span>
+                        </div>`;
+                }
+            }
+        }
+    }
+
+    // Mondes
+    const worldList = document.getElementById("world-list");
+    if (worldList) {
+        const unlocked = profile.unlocked_worlds || ["monde_1"];
+        for (const [id, world] of Object.entries(WORLDS)) {
+            const isUnlocked = unlocked.includes(id);
+            worldList.innerHTML += `
+                <div class="world-badge ${isUnlocked ? "unlocked" : "locked"}">
+                    ${world.icon} ${world.name} ${isUnlocked ? "✓" : "🔒"}
+                </div>`;
+        }
+    }
+
+    // Choix de classe
+    const classGrid = document.getElementById("classes-grid");
+    if (classGrid) {
+        for (const [key, cls] of Object.entries(classes)) {
+            const btn = document.createElement("div");
+            btn.className = "class-option";
+            const icon = cls.name.match(/\S+$/)?.[0] ?? "⭐";
+            btn.innerHTML = `
+                <div class="cls-icon">${icon}</div>
+                <div class="cls-name">${cls.name.replace(/\s*\S+$/, "")}</div>
+                <div class="cls-desc">${cls.description}</div>
+            `;
+            btn.addEventListener("click", () => pickClass(key, cls.name));
+            classGrid.appendChild(btn);
+        }
+    }
+}
+
+async function pickClass(key, name) {
+    if (!confirm(`Choisir la classe ${name} ? Ce choix est définitif.`)) return;
+    try {
+        await api.chooseClass(key);
+        toast(`Classe ${name} choisie !`, "success");
+        setTimeout(() => location.reload(), 1000);
+    } catch (e) {
+        toast(e.message, "error");
+    }
+}
+
+init().catch(e => {
+    console.error(e);
+    document.getElementById("main-content").innerHTML = `<div class="loader">Erreur : ${e.message}</div>`;
+});
+</script>
+</body>
+</html>

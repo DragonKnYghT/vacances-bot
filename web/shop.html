@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boutique — Serveur Vacances</title>
+    <link rel="stylesheet" href="/static/css/global.css">
+    <style>
+        .points-bar {
+            display: flex; align-items: center; justify-content: space-between;
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .points-bar .pts { font-size: 1.5rem; font-weight: 800; }
+        .points-bar .lbl { font-size: .8rem; color: var(--muted); }
+
+        .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+
+        .shop-card {
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1.25rem;
+            display: flex; flex-direction: column; gap: .75rem;
+        }
+        .shop-card .item-icon { font-size: 2.5rem; }
+        .shop-card .item-name { font-weight: 700; font-size: 1rem; }
+        .shop-card .item-price {
+            display: flex; align-items: center; gap: .4rem;
+            font-size: .9rem; font-weight: 600;
+        }
+        .item-price .original {
+            text-decoration: line-through; color: var(--muted); font-weight: 400; font-size: .8rem;
+        }
+        .item-price .discounted { color: var(--green); }
+        .item-cat { font-size: .75rem; color: var(--muted); }
+
+        .qty-row { display: flex; align-items: center; gap: .5rem; }
+        .qty-input {
+            width: 50px; padding: .35rem; text-align: center;
+            background: var(--bg3); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: .9rem;
+        }
+        .qty-input:focus { outline: none; border-color: var(--accent); }
+
+        .category-tabs {
+            display: flex; gap: .5rem; margin-bottom: 1.25rem; flex-wrap: wrap;
+        }
+        .tab {
+            padding: .4rem 1rem; border-radius: 99px; font-size: .85rem;
+            font-weight: 600; cursor: pointer; transition: background .15s, color .15s;
+            background: var(--bg2); border: 1px solid var(--border); color: var(--muted);
+        }
+        .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    </style>
+</head>
+<body>
+<div id="main-content">
+    <div class="loader"><div class="spinner"></div><span>Chargement de la boutique...</span></div>
+</div>
+
+<script type="module">
+import { api, isLoggedIn, discordAvatar } from "/static/js/api.js";
+import { renderNav, loadNavUser, requireAuth, toast, fmt } from "/static/js/ui.js";
+
+renderNav("shop");
+if (!requireAuth()) throw new Error("not auth");
+
+const ITEM_ICONS = {
+    pierre: "🪨", bois: "🪵", fer: "⚙️", cristal: "💎",
+    magie: "✨", pixel_1: "🎨",
+};
+const CAT_LABELS = { materiau: "Matériaux", special: "Spécial", pixel: "Pixels" };
+
+let allItems = [];
+let userPoints = 0;
+let currentCat = "all";
+
+async function init() {
+    const [shopData, profile] = await Promise.all([api.getShop(), api.getProfile()]);
+    window.__profile = profile;
+    await loadNavUser();
+
+    allItems = shopData.items;
+    userPoints = shopData.user_points;
+
+    document.getElementById("main-content").innerHTML = `
+        <div class="page">
+            <div class="points-bar">
+                <div>
+                    <div class="lbl">Tes points disponibles</div>
+                    <div class="pts" id="pts-display">💠 ${fmt(userPoints)}</div>
+                </div>
+                <a href="/profile.html" class="btn-outline">Voir profil</a>
+            </div>
+
+            <div class="category-tabs" id="cat-tabs">
+                <div class="tab active" data-cat="all">Tout</div>
+                <div class="tab" data-cat="materiau">Matériaux</div>
+                <div class="tab" data-cat="special">Spécial</div>
+                <div class="tab" data-cat="pixel">Pixels</div>
+            </div>
+
+            <div class="shop-grid" id="shop-grid"></div>
+        </div>
+    `;
+
+    document.getElementById("cat-tabs").addEventListener("click", e => {
+        const tab = e.target.closest(".tab");
+        if (!tab) return;
+        currentCat = tab.dataset.cat;
+        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+        renderItems();
+    });
+
+    renderItems();
+}
+
+function renderItems() {
+    const grid = document.getElementById("shop-grid");
+    const filtered = currentCat === "all" ? allItems : allItems.filter(i => i.category === currentCat);
+
+    grid.innerHTML = filtered.map(item => `
+        <div class="shop-card">
+            <div class="item-icon">${ITEM_ICONS[item.id] || "📦"}</div>
+            <div>
+                <div class="item-name">${item.name}</div>
+                <div class="item-cat">${CAT_LABELS[item.category] || item.category}</div>
+            </div>
+            <div class="item-price">
+                💠 <span class="${item.discounted ? "discounted" : ""}">${fmt(item.price)}</span>
+                ${item.discounted ? `<span class="original">${fmt(item.base_price)}</span>` : ""}
+                pts
+            </div>
+            <div class="qty-row">
+                <input type="number" class="qty-input" value="1" min="1" max="99" data-id="${item.id}">
+                <button class="btn-primary" style="flex:1" data-id="${item.id}" data-price="${item.price}">Acheter</button>
+            </div>
+        </div>
+    `).join("");
+
+    grid.querySelectorAll("button[data-id]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const id    = btn.dataset.id;
+            const price = parseInt(btn.dataset.price);
+            const qtyEl = grid.querySelector(`.qty-input[data-id="${id}"]`);
+            const qty   = parseInt(qtyEl?.value || 1);
+            buy(id, qty, price);
+        });
+    });
+}
+
+async function buy(id, qty, unitPrice) {
+    const total = unitPrice * qty;
+    if (userPoints < total) { toast("Pas assez de points !", "error"); return; }
+    try {
+        const res = await api.buyItem(id, qty);
+        userPoints = res.remaining_points;
+        document.getElementById("pts-display").textContent = `💠 ${fmt(userPoints)}`;
+        toast(`Acheté × ${qty} ! Il te reste ${fmt(userPoints)} pts.`, "success");
+        // Mettre à jour les items (prix inchangés mais état local OK)
+        allItems = allItems.map(i => i.id === id ? { ...i } : i);
+    } catch (e) {
+        toast(e.message, "error");
+    }
+}
+
+init().catch(console.error);
+</script>
+</body>
+</html>

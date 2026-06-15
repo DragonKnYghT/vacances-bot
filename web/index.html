@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serveur Vacances</title>
+    <link rel="stylesheet" href="/static/css/global.css">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: radial-gradient(ellipse at 60% 20%, rgba(124,92,252,.18) 0%, transparent 60%), var(--bg);
+            text-align: center;
+        }
+        .hero { max-width: 520px; padding: 2rem; }
+        .hero .emoji { font-size: 5rem; margin-bottom: 1rem; display: block; animation: float 3s ease-in-out infinite; }
+        @keyframes float {
+            0%,100% { transform: translateY(0); }
+            50%      { transform: translateY(-10px); }
+        }
+        .hero h1 {
+            font-size: 2.6rem;
+            font-weight: 900;
+            line-height: 1.1;
+            margin-bottom: .75rem;
+            background: linear-gradient(135deg, #fff 30%, var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero p { color: var(--muted); font-size: 1.05rem; line-height: 1.6; margin-bottom: 2rem; }
+        .login-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: .75rem;
+            background: #5865F2;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 700;
+            padding: .9rem 2rem;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            transition: filter .15s, transform .1s;
+            box-shadow: 0 4px 20px rgba(88,101,242,.4);
+        }
+        .login-btn:hover  { filter: brightness(1.1); }
+        .login-btn:active { transform: scale(.97); }
+        .login-btn svg { width: 24px; height: 24px; }
+
+        .features {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .feature {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: .75rem 1rem;
+            font-size: .85rem;
+            color: var(--muted);
+        }
+        .feature span { display: block; font-size: 1.4rem; margin-bottom: .3rem; }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <em class="emoji">🏰</em>
+        <h1>Serveur Vacances</h1>
+        <p>Connecte-toi avec ton compte Discord pour voir tes points, construire la base du serveur et dessiner sur la carte collaborative.</p>
+
+        <button class="login-btn" id="login-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026 13.83 13.83 0 0 0 1.226-1.963.074.074 0 0 0-.041-.104 13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.245.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028z"/></svg>
+            Se connecter avec Discord
+        </button>
+
+        <div class="features">
+            <div class="feature"><span>📊</span>Tes points</div>
+            <div class="feature"><span>🛒</span>Boutique</div>
+            <div class="feature"><span>🌳</span>Skill Tree</div>
+            <div class="feature"><span>🎨</span>Pixel Map</div>
+            <div class="feature"><span>⚔️</span>Classes</div>
+            <div class="feature"><span>🏆</span>Classement</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { isLoggedIn, loginWithDiscord } from "/static/js/api.js";
+
+        // Si déjà connecté → profil
+        if (isLoggedIn()) {
+            window.location.href = "/profile.html";
+        }
+
+        document.getElementById("login-btn").addEventListener("click", loginWithDiscord);
+    </script>
+</body>
+</html>

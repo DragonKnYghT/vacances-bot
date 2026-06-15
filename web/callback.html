@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Connexion...</title>
+    <link rel="stylesheet" href="/static/css/global.css">
+    <style>
+        body { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+    </style>
+</head>
+<body>
+    <div class="loader">
+        <div class="spinner"></div>
+        <span>Connexion en cours...</span>
+    </div>
+    <script type="module">
+        import { setToken } from "/static/js/api.js";
+
+        const params = new URLSearchParams(window.location.search);
+        const token  = params.get("token");
+
+        if (token) {
+            setToken(token);
+            window.location.href = "/profile.html";
+        } else {
+            document.querySelector(".loader span").textContent = "Erreur lors de la connexion.";
+        }
+    </script>
+</body>
+</html>

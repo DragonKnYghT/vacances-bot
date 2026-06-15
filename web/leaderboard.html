@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classement — Serveur Vacances</title>
+    <link rel="stylesheet" href="/static/css/global.css">
+    <style>
+        .lb-table { width: 100%; border-collapse: collapse; }
+        .lb-table th {
+            text-align: left; font-size: .75rem; color: var(--muted);
+            text-transform: uppercase; letter-spacing: .05em;
+            padding: .5rem 1rem; border-bottom: 1px solid var(--border);
+        }
+        .lb-table td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
+        .lb-table tr:last-child td { border-bottom: none; }
+        .lb-table tr:hover td { background: var(--bg3); }
+
+        .rank-num {
+            font-size: 1.1rem; font-weight: 800;
+            min-width: 36px; text-align: center;
+        }
+        .rank-1 { color: var(--gold); }
+        .rank-2 { color: #c0c0c0; }
+        .rank-3 { color: #cd7f32; }
+
+        .player-cell { display: flex; align-items: center; gap: .75rem; }
+        .player-cell img {
+            width: 36px; height: 36px; border-radius: 50%;
+            border: 2px solid var(--border);
+        }
+        .player-cell .name { font-weight: 600; }
+
+        .pts-bar-wrap { min-width: 100px; }
+        .pts-label { font-size: .8rem; color: var(--muted); margin-top: .2rem; }
+
+        .highlight td { background: rgba(124,92,252,.08); }
+        .highlight td:first-child { border-left: 3px solid var(--accent); }
+    </style>
+</head>
+<body>
+<div id="main-content">
+    <div class="loader"><div class="spinner"></div><span>Chargement du classement...</span></div>
+</div>
+
+<script type="module">
+import { api, isLoggedIn, discordAvatar, getToken } from "/static/js/api.js";
+import { renderNav, loadNavUser, toast, fmt } from "/static/js/ui.js";
+
+renderNav("leaderboard");
+
+async function init() {
+    const [lbData, profileData] = await Promise.all([
+        api.getLeaderboard(),
+        isLoggedIn() ? api.getProfile().catch(() => null) : Promise.resolve(null),
+    ]);
+    if (profileData) { window.__profile = profileData; await loadNavUser(); }
+
+    const { leaderboard } = lbData;
+    const myId = profileData?.discord_id;
+    const maxPts = leaderboard[0]?.total || 1;
+
+    document.getElementById("main-content").innerHTML = `
+        <div class="page">
+            <h1 style="font-size:1.6rem;font-weight:900;margin-bottom:1.5rem">🏆 Classement</h1>
+            <div class="card" style="padding:0;overflow:hidden">
+                <table class="lb-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Joueur</th>
+                            <th>Classe</th>
+                            <th>Points</th>
+                            <th style="min-width:120px">Détail</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${leaderboard.map((p, i) => renderRow(p, i + 1, maxPts, myId)).join("")}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+const CLASS_ICONS = {
+    guerrier: "⚔️", mage: "🔮", architecte: "🏗️",
+    marchand: "💰", explorateur: "🗺️",
+};
+
+function renderRow(p, rank, maxPts, myId) {
+    const isMe = p.discord_id === myId;
+    const avatar = discordAvatar(p.discord_id, p.avatar, 72);
+    const name = p.global_name || p.username || "Joueur";
+    const rankClass = rank <= 3 ? `rank-${rank}` : "";
+    const pct = Math.round((p.total / maxPts) * 100);
+
+    return `
+        <tr class="${isMe ? "highlight" : ""}">
+            <td><span class="rank-num ${rankClass}">${rank <= 3 ? ["🥇","🥈","🥉"][rank-1] : rank}</span></td>
+            <td>
+                <div class="player-cell">
+                    <img src="${avatar}" alt="${name}">
+                    <span class="name">${name}${isMe ? " <span class='tag purple' style='font-size:.7rem'>Toi</span>" : ""}</span>
+                </div>
+            </td>
+            <td>${p.classe ? (CLASS_ICONS[p.classe] || "") + " " + p.classe : "<span style='color:var(--muted)'>—</span>"}</td>
+            <td><strong>💠 ${fmt(p.total)}</strong></td>
+            <td>
+                <div class="pts-bar-wrap">
+                    <div class="progress-bar"><div class="fill" style="width:${pct}%"></div></div>
+                    <div class="pts-label">🎙️${fmt(p.vocal_points)} 💬${fmt(p.message_points)} 📅${fmt(p.activity_points)} 🎮${fmt(p.minigame_points)}</div>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+init().catch(console.error);
+</script>
+</body>
+</html>
