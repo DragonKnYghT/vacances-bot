@@ -111,7 +111,8 @@ Format JSON strict :
 }
 Mélange les propositions, indique l'index correct (0-3) dans bonne_reponse.""",
 
-    "champion_question": """Génère une question de quiz UNIQUE sur le thème donné en contexte.
+    "champion_question": """Génère une question de quiz UNIQUE et DIFFÉRENTE sur le thème donné en contexte.
+IMPORTANT : Des questions ont déjà été posées dans ce contexte — génère une question COMPLÈTEMENT DIFFÉRENTE.
 Format JSON strict :
 {
   "question": "la question",
@@ -120,13 +121,15 @@ Format JSON strict :
   "niveau": "Facile/Moyen/Difficile",
   "anecdote": "anecdote fun"
 }
-Sois créatif, ne répète jamais les mêmes questions. Mélange les propositions.""",
+Sois créatif, change d'angle, de sous-thème, de difficulté. Mélange les propositions.""",
 }
 
-async def generate_activity_content(activity_type: str, extra_context: str = "") -> dict:
+async def generate_activity_content(activity_type: str, extra_context: str = "", previous_questions: list = None) -> dict:
     prompt = PROMPTS.get(activity_type, PROMPTS["dilemme"])
     if extra_context:
         prompt += f"\n\nThème/Contexte : {extra_context}"
+    if previous_questions:
+        prompt += f"\n\nQuestions déjà posées (NE PAS répéter) :\n" + "\n".join(f"- {q}" for q in previous_questions)
 
     seed = random.randint(10000, 99999)
     full_prompt = (
