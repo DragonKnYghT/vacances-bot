@@ -20,6 +20,10 @@ CORS(app, origins=[
     "http://127.0.0.1:5500",
 ])
 
+@app.route("/")
+def index():
+    return jsonify({"status": "ok"}), 200
+
 # ── MongoDB ──────────────────────────────────────────────────────────────────
 MONGO_URI = os.environ.get("MONGO_URI")
 client = MongoClient(MONGO_URI)
@@ -284,10 +288,6 @@ def auth_me():
 @require_auth
 def auth_logout():
     return jsonify({"ok": True})
-
-@app.route("/")
-def index():
-    return jsonify({"status": "ok"}), 200
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes Profil
