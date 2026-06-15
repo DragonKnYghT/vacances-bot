@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Classement — Serveur Vacances</title>
-    <link rel="stylesheet" href="/static/css/global.css">
+    <link rel="stylesheet" href="static/css/global.css">
     <style>
         .lb-table { width: 100%; border-collapse: collapse; }
         .lb-table th {
@@ -44,8 +44,8 @@
 </div>
 
 <script type="module">
-import { api, isLoggedIn, discordAvatar, getToken } from "/static/js/api.js";
-import { renderNav, loadNavUser, toast, fmt } from "/static/js/ui.js";
+import { api, isLoggedIn, discordAvatar, getToken } from "./static/js/api.js";
+import { renderNav, loadNavUser, toast, fmt } from "./static/js/ui.js";
 
 renderNav("leaderboard");
 
