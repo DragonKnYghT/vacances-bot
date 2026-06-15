@@ -427,4 +427,77 @@ async def on_ready():
 async def run_bot():
     await bot.start(TOKEN)
 
+# ──────────────────────────────────────────
+#  POINTS MESSAGES
+# ──────────────────────────────────────────
 
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+    # 1 point par message (cooldown : 1 msg/minute compté)
+    db.add_message_points(str(message.author.id))
+    await bot.process_commands(message)
+
+# ──────────────────────────────────────────
+#  POINTS VOCAL
+# ──────────────────────────────────────────
+
+# Stocke l'heure d'entrée en vocal de chaque membre
+_vocal_join_times = {}
+
+@bot.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    if member.bot:
+        return
+    uid = str(member.id)
+
+    # Entrée en vocal
+    if before.channel is None and after.channel is not None:
+        _vocal_join_times[uid] = datetime.now(TIMEZONE)
+
+    # Sortie du vocal
+    elif before.channel is not None and after.channel is None:
+        join_time = _vocal_join_times.pop(uid, None)
+        if join_time:
+            minutes = int((datetime.now(TIMEZONE) - join_time).total_seconds() / 60)
+            if minutes >= 1:  # minimum 1 minute pour compter
+                db.add_vocal_points(uid, minutes)
+                print(f"[VOCAL] {member.display_name} : +{minutes} min → {minutes // 6} pts vocal")
+
+# ──────────────────────────────────────────
+#  POINTS RÉACTIONS (participation MAIS.../Dilemme/Sondage)
+# ──────────────────────────────────────────
+
+# Emojis qui donnent des points de participation selon l'activité
+REACTION_EMOJIS = {
+    "✅", "❌",           # MAIS...
+    "🇦", "🇧",           # Dilemme
+    "🔴", "🟡", "🟢", "🔵",  # Sondage absurde
+    "1️⃣", "2️⃣", "3️⃣",  # Deux vérités un mensonge
+    "🏅", "🍽️", "🎵",    # Olympiades / Recette / Blindtest
+}
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    if payload.user_id == bot.user.id:
+        return
+    emoji_str = str(payload.emoji)
+    if emoji_str not in REACTION_EMOJIS:
+        return
+
+    state = db.get_state()
+    week_num = state["current_week"]
+
+    # Vérifie que c'est bien sur le bon salon
+    if payload.channel_id != CHANNEL_ID:
+        return
+
+    uid = str(payload.user_id)
+
+    # Évite de compter deux fois (si l'utilisateur retire et remet une réaction)
+    if db.has_played_today(uid, week_num):
+        return
+
+    db.add_week_points(uid, week_num, POINTS_PARTICIPATION, "participation")
+    print(f"[REACTION] {uid} → +{POINTS_PARTICIPATION} pts participation (semaine {week_num})")
