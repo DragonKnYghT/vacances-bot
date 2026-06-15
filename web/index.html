@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Serveur Vacances</title>
-    <link rel="stylesheet" href="/static/css/global.css">
+    <link rel="stylesheet" href="static/css/global.css">
     <style>
         body {
             display: flex;
@@ -90,11 +90,11 @@
     </div>
 
     <script type="module">
-        import { isLoggedIn, loginWithDiscord } from "/static/js/api.js";
+        import { isLoggedIn, loginWithDiscord } from "./static/js/api.js";
 
         // Si déjà connecté → profil
         if (isLoggedIn()) {
-            window.location.href = "/profile.html";
+            window.location.href = "profile.html";
         }
 
         document.getElementById("login-btn").addEventListener("click", loginWithDiscord);
