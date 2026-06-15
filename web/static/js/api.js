@@ -3,7 +3,7 @@
  * Toutes les pages importent ce fichier.
  */
 
-const API_BASE = "https://vacances-bot.onrender.com"; // ← à remplacer
+const API_BASE = "https://TON_BACKEND.onrender.com"; // ← à remplacer
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ export function isLoggedIn() {
 
 export function logout() {
     clearToken();
-    window.location.href = "/index.html";
+    window.location.href = "index.html";
 }
 
 /** Redirige vers le login Discord */
@@ -47,7 +47,7 @@ async function apiFetch(path, options = {}) {
 
     if (resp.status === 401) {
         clearToken();
-        window.location.href = "/index.html";
+        window.location.href = "index.html";
         return;
     }
 
