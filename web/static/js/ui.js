@@ -10,11 +10,11 @@ export function renderNav(activePage = "") {
     const nav = document.createElement("nav");
     nav.innerHTML = `
         <span class="logo">🏰 Serveur Vacances</span>
-        <a href="/profile.html" ${activePage === "profile" ? 'class="active"' : ""}>Profil</a>
-        <a href="/shop.html"    ${activePage === "shop"    ? 'class="active"' : ""}>Boutique</a>
-        <a href="/skilltree.html" ${activePage === "skilltree" ? 'class="active"' : ""}>Skill Tree</a>
-        <a href="/pixelmap.html"  ${activePage === "pixelmap"  ? 'class="active"' : ""}>Pixel Map</a>
-        <a href="/leaderboard.html" ${activePage === "leaderboard" ? 'class="active"' : ""}>Classement</a>
+        <a href="profile.html" ${activePage === "profile" ? 'class="active"' : ""}>Profil</a>
+        <a href="shop.html"    ${activePage === "shop"    ? 'class="active"' : ""}>Boutique</a>
+        <a href="skilltree.html" ${activePage === "skilltree" ? 'class="active"' : ""}>Skill Tree</a>
+        <a href="pixelmap.html"  ${activePage === "pixelmap"  ? 'class="active"' : ""}>Pixel Map</a>
+        <a href="leaderboard.html" ${activePage === "leaderboard" ? 'class="active"' : ""}>Classement</a>
         <div id="nav-user" style="display:flex;align-items:center;gap:.6rem;margin-left:.5rem"></div>
     `;
     document.body.prepend(nav);
@@ -32,7 +32,7 @@ export async function loadNavUser() {
         el.innerHTML = `
             <img id="nav-avatar" src="${avatarUrl}" alt="avatar">
             <span id="nav-username">${profile.global_name || profile.username || "Joueur"}</span>
-            <button class="btn-outline" style="font-size:.8rem;padding:.3rem .8rem" onclick="import('/static/js/api.js').then(m=>m.logout())">Déco</button>
+            <button class="btn-outline" style="font-size:.8rem;padding:.3rem .8rem" onclick="import('./static/js/api.js').then(m=>m.logout())">Déco</button>
         `;
     } catch (_) {}
 }
@@ -73,7 +73,7 @@ export function showLoader(container, message = "Chargement...") {
 
 export function requireAuth() {
     if (!isLoggedIn()) {
-        window.location.href = "/index.html";
+        window.location.href = "index.html";
         return false;
     }
     return true;
