@@ -407,16 +407,16 @@ def setup_menu_command(tree, bot):
             embed.set_footer(text="Jouez avec /p4col 1-7 !")
         await interaction.response.send_message(embed=embed)
 
-@tree.command(name="site", description="🌐 Accéder au site web")
-async def site(interaction: discord.Interaction):
-    view = discord.ui.View()
-    view.add_item(discord.ui.Button(
-        label="🌐 Ouvrir le site",
-        url="https://DragonKnYghT.github.io/vacances-bot/web/index.html",
-        style=discord.ButtonStyle.link
-    ))
-    await interaction.response.send_message(
-        "🏰 **Serveur Vacances — Site Web**\nConsulte tes points, la boutique, le skill tree et la pixel map !",
-        view=view,
-        ephemeral=True
-    )
+    @tree.command(name="site", description="🌐 Accéder au site web")
+    async def site(interaction: discord.Interaction):
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(
+            label="🌐 Ouvrir le site",
+            url="https://DragonKnYghT.github.io/vacances-bot/web/index.html",
+            style=discord.ButtonStyle.link
+        ))
+        await interaction.response.send_message(
+            "🏰 **Serveur Vacances — Site Web**\nConsulte tes points, la boutique, le skill tree et la pixel map !",
+            view=view,
+            ephemeral=True
+        )
