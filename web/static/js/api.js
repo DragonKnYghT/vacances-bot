@@ -3,7 +3,7 @@
  * Toutes les pages importent ce fichier.
  */
 
-const API_BASE = "https://vacances-bot.onrender.com"; // ← à remplacer
+const API_BASE = "https://vacances-bot-web.onrender.com"; // ← à remplacer
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
