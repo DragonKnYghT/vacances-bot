@@ -14,20 +14,21 @@ from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
-CORS(app, origins=[
-    "https://dragonknYghT.github.io",   # ← remplace par ton GitHub Pages URL
-    "http://localhost:3000",             # pour le dev local
-    "http://127.0.0.1:5500",
-])
-
-@app.route("/")
-def index():
-    return jsonify({"status": "ok"}), 200
+CORS(app,
+    origins=[
+        "https://DragonKnYghT.github.io",
+        "http://localhost:3000",
+        "http://127.0.0.1:5500",
+    ],
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+)
 
 # ── MongoDB ──────────────────────────────────────────────────────────────────
 MONGO_URI = os.environ.get("MONGO_URI")
 client = MongoClient(MONGO_URI)
-db = client["discord_bot"]             # ← même DB que le bot
+db = client["vacances_bot"]             # ← même DB que le bot
 
 # ── Discord OAuth2 ───────────────────────────────────────────────────────────
 DISCORD_CLIENT_ID     = os.environ.get("DISCORD_CLIENT_ID")
@@ -173,10 +174,10 @@ def require_auth(f):
 
 def get_user_doc(user_id: str) -> dict:
     """Récupère ou crée le document utilisateur dans MongoDB."""
-    doc = db.users.find_one({"discord_id": user_id})
+    doc = db.users.find_one({"user_id": user_id})
     if not doc:
         doc = {
-            "discord_id": user_id,
+            "user_id": user_id,
             "points": 0,
             "vocal_points": 0,
             "message_points": 0,
@@ -256,7 +257,7 @@ def auth_callback():
 
     # Crée/met à jour en base
     db.users.update_one(
-        {"discord_id": user_id},
+        {"user_id": user_id},
         {"$set": {
             "username": discord_user["username"],
             "avatar": discord_user.get("avatar"),
@@ -315,7 +316,7 @@ def get_profile():
             {"$ifNull": ["$minigame_points", 0]},
         ]}}},
         {"$sort": {"total": -1}},
-        {"$group": {"_id": None, "ids": {"$push": "$discord_id"}}},
+        {"$group": {"_id": None, "ids": {"$push": "$user_id"}}},
     ]
     result = list(db.users.aggregate(pipeline))
     if result and request.user_id in result[0]["ids"]:
@@ -333,6 +334,13 @@ def get_profile():
 @require_auth
 def get_shop():
     doc = get_user_doc(request.user_id)
+    total_points = (
+        doc.get("vocal_points", 0) +
+        doc.get("message_points", 0) +
+        doc.get("minigame_points", 0) +
+        doc.get("activity_points", 0)
+    )
+    available = max(0, total_points - doc.get("spent_points", 0))
     items = []
     for key, item in SHOP_ITEMS.items():
         discounted = apply_class_discount(doc, key, item["price"])
@@ -344,7 +352,7 @@ def get_shop():
             "category": item["category"],
             "discounted": discounted < item["price"],
         })
-    return jsonify({"items": items, "user_points": doc.get("points", 0)})
+    return jsonify({"items": items, "user_points": available})
 
 @app.route("/api/shop/buy", methods=["POST"])
 @require_auth
@@ -358,20 +366,25 @@ def buy_item():
 
     doc = get_user_doc(request.user_id)
     price = apply_class_discount(doc, item_key, SHOP_ITEMS[item_key]["price"]) * qty
-    current_points = doc.get("points", 0)
+    total_points = (
+        doc.get("vocal_points", 0) +
+        doc.get("message_points", 0) +
+        doc.get("minigame_points", 0) +
+        doc.get("activity_points", 0)
+    )
+    available = max(0, total_points - doc.get("spent_points", 0))
 
-    if current_points < price:
+    if available < price:
         return jsonify({"error": "Pas assez de points"}), 400
 
-    # Mise à jour
     mat_field = f"materials.{item_key}"
-    update = {"$inc": {"points": -price, mat_field: qty}}
+    update = {"$inc": {"spent_points": price, mat_field: qty}}
 
     if item_key == "pixel_1":
         update["$inc"]["pixels_remaining"] = 10 * qty
 
-    db.users.update_one({"discord_id": request.user_id}, update)
-    return jsonify({"ok": True, "spent": price, "remaining_points": current_points - price})
+    db.users.update_one({"user_id": request.user_id}, update)
+    return jsonify({"ok": True, "spent": price, "remaining_points": available - price})
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes Skill Tree
@@ -436,7 +449,7 @@ def unlock_node():
     if "unlocks" in node:
         inc_update["$addToSet"] = {"unlocked_worlds": node["unlocks"]}
 
-    db.users.update_one({"discord_id": request.user_id}, inc_update)
+    db.users.update_one({"user_id": request.user_id}, inc_update)
     return jsonify({"ok": True, "unlocked": node_key, "new_world": node.get("unlocks")})
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -498,7 +511,7 @@ def place_pixel(world_id):
         }},
         upsert=True
     )
-    db.users.update_one({"discord_id": request.user_id}, {"$inc": {"pixels_remaining": -1}})
+    db.users.update_one({"user_id": request.user_id}, {"$inc": {"pixels_remaining": -1}})
 
     return jsonify({"ok": True, "pixels_remaining": pixels_left - 1})
 
@@ -524,7 +537,7 @@ def choose_class():
         return jsonify({"error": "Tu as déjà choisi une classe"}), 400
 
     db.users.update_one(
-        {"discord_id": request.user_id},
+        {"user_id": request.user_id},
         {"$set": {"classe": classe}}
     )
     return jsonify({"ok": True, "classe": classe})
@@ -546,7 +559,7 @@ def get_leaderboard():
         {"$limit": 20},
         {"$project": {
             "_id": 0,
-            "discord_id": 1,
+            "user_id": 1,
             "username": 1,
             "global_name": 1,
             "avatar": 1,
