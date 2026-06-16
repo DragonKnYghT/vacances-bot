@@ -578,3 +578,100 @@ def get_leaderboard():
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes Codes Promo
+# ─────────────────────────────────────────────────────────────────────────────
+
+REWARD_LABELS = {
+    "message_points":   "points messages",
+    "vocal_points":     "points vocal",
+    "pixels_remaining": "pixels",
+    "pierre":  "🪨 Pierre",
+    "bois":    "🪵 Bois",
+    "fer":     "⚙️ Fer",
+    "cristal": "💎 Cristal",
+    "magie":   "✨ Essence magique",
+}
+
+@app.route("/api/codes/redeem", methods=["POST"])
+@require_auth
+def redeem_code():
+    data     = request.get_json()
+    raw_code = data.get("code", "").strip().upper()
+
+    if not raw_code:
+        return jsonify({"error": "Code vide"}), 400
+
+    code_doc = db.codes.find_one({"code": raw_code})
+
+    if not code_doc:
+        return jsonify({"error": "Code invalide ❌"}), 404
+    if not code_doc.get("active", True):
+        return jsonify({"error": "Ce code est désactivé"}), 400
+
+    uid = request.user_id
+
+    # Déjà utilisé par ce joueur
+    if uid in code_doc.get("used_by", []):
+        return jsonify({"error": "Tu as déjà utilisé ce code 😅"}), 400
+
+    # Limite globale
+    total_max = code_doc.get("total_max")
+    if total_max is not None and code_doc.get("total_used", 0) >= total_max:
+        return jsonify({"error": "Ce code a atteint sa limite d'utilisations 😢"}), 400
+
+    # Applique les récompenses
+    rewards = code_doc.get("rewards", {})
+    if not rewards:
+        return jsonify({"error": "Code sans récompenses"}), 400
+
+    inc_fields = {}
+    for field, amount in rewards.items():
+        if field in ("pierre", "bois", "fer", "cristal", "magie"):
+            inc_fields[f"materials.{field}"] = amount
+        else:
+            inc_fields[field] = amount
+
+    db.users.update_one({"user_id": uid}, {"$inc": inc_fields}, upsert=True)
+    db.codes.update_one(
+        {"code": raw_code},
+        {"$push": {"used_by": uid}, "$inc": {"total_used": 1}}
+    )
+
+    rewards_display = []
+    for field, amount in rewards.items():
+        label = REWARD_LABELS.get(field, field)
+        rewards_display.append(f"+{amount} {label}")
+
+    return jsonify({"ok": True, "rewards": rewards_display})
+
+
+@app.route("/api/codes/check", methods=["POST"])
+@require_auth
+def check_code():
+    data     = request.get_json()
+    raw_code = data.get("code", "").strip().upper()
+    if not raw_code:
+        return jsonify({"valid": False}), 200
+
+    code_doc = db.codes.find_one({"code": raw_code})
+    if not code_doc or not code_doc.get("active", True):
+        return jsonify({"valid": False, "reason": "Invalide"}), 200
+
+    uid          = request.user_id
+    already_used = uid in code_doc.get("used_by", [])
+    total_max    = code_doc.get("total_max")
+    exhausted    = total_max is not None and code_doc.get("total_used", 0) >= total_max
+
+    rewards = code_doc.get("rewards", {})
+    rewards_display = [
+        f"+{amt} {REWARD_LABELS.get(f, f)}" for f, amt in rewards.items()
+    ]
+
+    return jsonify({
+        "valid":        not already_used and not exhausted,
+        "already_used": already_used,
+        "exhausted":    exhausted,
+        "rewards":      rewards_display,
+    })
