@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gacha — Serveur Vacances</title>
+    <link rel="stylesheet" href="static/css/global.css">
+    <style>
+        .gacha-layout {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        h1 { font-size: 1.8rem; font-weight: 900; margin-bottom: .3rem; }
+        .subtitle { color: var(--muted); font-size: .95rem; margin-bottom: 2rem; }
+
+        /* ── Tickets bar ── */
+        .tickets-bar {
+            display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap;
+        }
+        .ticket-badge {
+            display: flex; align-items: center; gap: .6rem;
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 10px; padding: .6rem 1.1rem;
+            font-size: .9rem; flex: 1; min-width: 140px;
+        }
+        .ticket-badge .tb-icon { font-size: 1.4rem; }
+        .ticket-badge .tb-count { font-size: 1.3rem; font-weight: 800; color: var(--accent); }
+        .ticket-badge .tb-label { font-size: .78rem; color: var(--muted); }
+
+        /* ── Quête quotidienne ── */
+        .quest-card {
+            background: linear-gradient(135deg, rgba(92,168,240,.1), var(--bg2));
+            border: 1px solid var(--blue);
+            border-radius: 12px; padding: 1.1rem 1.4rem;
+            margin-bottom: 2rem;
+            display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+        }
+        .quest-icon { font-size: 2rem; }
+        .quest-info { flex: 1; min-width: 180px; }
+        .quest-label { font-weight: 700; font-size: .95rem; }
+        .quest-reward { font-size: .8rem; color: var(--muted); margin-top: .2rem; }
+        .quest-progress-wrap { flex: 1; min-width: 160px; }
+        .quest-numbers { font-size: .8rem; color: var(--muted); margin-top: .3rem; text-align: right; }
+        .quest-completed { color: var(--green); font-weight: 700; font-size: .9rem; }
+
+        /* ── Roues ── */
+        .wheels-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 640px) { .wheels-grid { grid-template-columns: 1fr; } }
+
+        .wheel-card {
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 14px; padding: 1.5rem;
+            display: flex; flex-direction: column; align-items: center; gap: 1rem;
+        }
+        .wheel-card h2 { font-size: 1rem; font-weight: 800; }
+
+        /* Canvas roulette */
+        .wheel-wrap {
+            position: relative; width: 240px; height: 240px;
+        }
+        .wheel-canvas { border-radius: 50%; display: block; }
+        .wheel-pointer {
+            position: absolute; top: -16px; left: 50%;
+            transform: translateX(-50%);
+            width: 0; height: 0;
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-top: 24px solid var(--gold);
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,.5));
+        }
+
+        /* Bouton tirage */
+        .pull-btn {
+            width: 100%; padding: .8rem;
+            font-size: .95rem; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center; gap: .5rem;
+        }
+        .pull-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+        /* Résultat */
+        .result-panel {
+            width: 100%;
+            background: var(--bg3); border-radius: 10px;
+            padding: 1rem; text-align: center;
+            display: none; flex-direction: column; gap: .4rem;
+        }
+        .result-panel.show { display: flex; }
+        .result-name { font-size: 1.2rem; font-weight: 800; }
+        .result-bonus { font-size: .82rem; color: var(--muted); }
+        .rarity-badge {
+            display: inline-block; padding: .2rem .75rem;
+            border-radius: 99px; font-size: .78rem; font-weight: 800;
+            border: 1.5px solid;
+        }
+
+        /* ── Historique ── */
+        .history-card {
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 12px; padding: 1.25rem;
+        }
+        .history-card h2 { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; margin-bottom: .75rem; }
+        .history-row {
+            display: flex; align-items: center; gap: .75rem;
+            padding: .5rem 0; border-bottom: 1px solid var(--border);
+            font-size: .88rem;
+        }
+        .history-row:last-child { border-bottom: none; }
+        .h-type { font-size: 1rem; }
+        .h-arrow { color: var(--muted); }
+        .h-name { font-weight: 700; flex: 1; }
+
+        /* ── Tableau raretés ── */
+        .rarity-table {
+            display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 2rem;
+        }
+        .rarity-chip {
+            display: flex; align-items: center; gap: .4rem;
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 8px; padding: .4rem .85rem; font-size: .82rem;
+        }
+        .r-dot { width: 10px; height: 10px; border-radius: 50%; }
+    </style>
+</head>
+<body>
+<div id="nav-placeholder"></div>
+
+<div class="gacha-layout">
+    <h1>🎰 Gacha</h1>
+    <p class="subtitle">Tourne la roue pour obtenir ta classe et ta race ! Attention — chaque tirage remplace l'ancienne.</p>
+
+    <!-- Raretés -->
+    <div class="rarity-table" id="rarity-table"></div>
+
+    <!-- Tickets -->
+    <div class="tickets-bar">
+        <div class="ticket-badge">
+            <span class="tb-icon">🎫</span>
+            <div>
+                <div class="tb-count" id="tc-count">—</div>
+                <div class="tb-label">Tickets Classe</div>
+            </div>
+        </div>
+        <div class="ticket-badge">
+            <span class="tb-icon">🎟️</span>
+            <div>
+                <div class="tb-count" id="tr-count">—</div>
+                <div class="tb-label">Tickets Race</div>
+            </div>
+        </div>
+        <a href="shop.html" class="ticket-badge" style="text-decoration:none;cursor:pointer;border-color:var(--accent)">
+            <span class="tb-icon">🛒</span>
+            <div>
+                <div style="font-weight:700;font-size:.9rem;color:var(--accent)">Acheter des tickets</div>
+                <div class="tb-label">Boutique →</div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Quête quotidienne -->
+    <div class="quest-card" id="quest-card">
+        <div class="quest-icon" id="q-icon">⏳</div>
+        <div class="quest-info">
+            <div class="quest-label" id="q-label">Chargement...</div>
+            <div class="quest-reward" id="q-reward"></div>
+        </div>
+        <div class="quest-progress-wrap">
+            <div class="progress-bar"><div class="fill" id="q-fill" style="width:0%"></div></div>
+            <div class="quest-numbers" id="q-numbers"></div>
+        </div>
+        <button class="btn-gold" id="q-claim-btn" style="display:none" onclick="claimQuest()">Réclamer 🎁</button>
+        <span class="quest-completed" id="q-done" style="display:none">✅ Complétée !</span>
+    </div>
+
+    <!-- Roues -->
+    <div class="wheels-grid">
+        <!-- Classe -->
+        <div class="wheel-card">
+            <h2>🧙 Classe actuelle : <span id="current-classe">—</span></h2>
+            <div class="wheel-wrap">
+                <canvas class="wheel-canvas" id="wheel-classe" width="240" height="240"></canvas>
+                <div class="wheel-pointer"></div>
+            </div>
+            <button class="btn-primary pull-btn" id="btn-pull-classe" onclick="pull('classe')">
+                🎫 Tirer (1 ticket)
+            </button>
+            <div class="result-panel" id="result-classe">
+                <div class="result-name" id="rn-classe"></div>
+                <div id="rb-classe"></div>
+                <div class="result-bonus" id="rbx-classe"></div>
+            </div>
+        </div>
+
+        <!-- Race -->
+        <div class="wheel-card">
+            <h2>🐉 Race actuelle : <span id="current-race">—</span></h2>
+            <div class="wheel-wrap">
+                <canvas class="wheel-canvas" id="wheel-race" width="240" height="240"></canvas>
+                <div class="wheel-pointer"></div>
+            </div>
+            <button class="btn-primary pull-btn" id="btn-pull-race" onclick="pull('race')">
+                🎟️ Tirer (1 ticket)
+            </button>
+            <div class="result-panel" id="result-race">
+                <div class="result-name" id="rn-race"></div>
+                <div id="rb-race"></div>
+                <div class="result-bonus" id="rbx-race"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historique -->
+    <div class="history-card">
+        <h2>📜 Historique de la session</h2>
+        <div id="history-list"><span style="color:var(--muted);font-size:.88rem">Aucun tirage pour l'instant.</span></div>
+    </div>
+</div>
+
+<script type="module">
+import { isLoggedIn } from "./static/js/api.js";
+import { renderNav, loadNavUser, requireAuth, toast } from "./static/js/ui.js";
+
+renderNav("gacha");
+if (!requireAuth()) throw new Error("not auth");
+
+const API = "https://vacances-bot-web.onrender.com";
+const token = () => localStorage.getItem("jwt_token");
+const apiFetch = (path, opts = {}) => fetch(API + path, {
+    ...opts,
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token()}`, ...opts.headers }
+}).then(r => r.json());
+
+const RARITY_COLORS = {
+    commun:     "#7a7f9a",
+    rare:       "#5ca8f0",
+    epique:     "#7c5cfc",
+    legendaire: "#f5c542",
+};
+const RARITY_LABELS = {
+    commun: "Commun", rare: "Rare", epique: "Épique", legendaire: "Légendaire"
+};
+
+// Pool simulé pour la roue (affichage uniquement)
+const WHEEL_CLASSES = [
+    {label:"Soldat",color:"#7a7f9a"},{label:"Paysan",color:"#7a7f9a"},
+    {label:"Guerrier",color:"#5ca8f0"},{label:"Architecte",color:"#5ca8f0"},
+    {label:"Mage",color:"#7c5cfc"},{label:"Paladin",color:"#7c5cfc"},
+    {label:"Roi",color:"#f5c542"},{label:"Titan",color:"#f5c542"},
+];
+const WHEEL_RACES = [
+    {label:"Humain",color:"#7a7f9a"},{label:"Gobelin",color:"#7a7f9a"},
+    {label:"Elfe",color:"#5ca8f0"},{label:"Démon",color:"#5ca8f0"},
+    {label:"Dragon",color:"#7c5cfc"},{label:"Ange",color:"#7c5cfc"},
+    {label:"Phénix",color:"#f5c542"},{label:"Ancien",color:"#f5c542"},
+];
+
+let sessionHistory = [];
+let spinning = { classe: false, race: false };
+
+// ── Raretés ──────────────────────────────────────────────────────────────
+document.getElementById("rarity-table").innerHTML = Object.entries(RARITY_COLORS).map(([k,c]) => `
+    <div class="rarity-chip">
+        <div class="r-dot" style="background:${c}"></div>
+        <span style="color:${c};font-weight:700">${RARITY_LABELS[k]}</span>
+        <span style="color:var(--muted)">${{commun:55,rare:30,epique:12,legendaire:3}[k]}%</span>
+    </div>
+`).join("");
+
+// ── Roue canvas ───────────────────────────────────────────────────────────
+function drawWheel(canvasId, items, angle = 0) {
+    const canvas = document.getElementById(canvasId);
+    const ctx    = canvas.getContext("2d");
+    const cx = canvas.width / 2, cy = canvas.height / 2, r = cx - 4;
+    const slice = (2 * Math.PI) / items.length;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    items.forEach((item, i) => {
+        const start = angle + i * slice;
+        const end   = start + slice;
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, start, end);
+        ctx.closePath();
+        ctx.fillStyle = item.color + "cc";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,.08)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Texte
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(start + slice / 2);
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 11px Inter, sans-serif";
+        ctx.shadowColor = "rgba(0,0,0,.6)";
+        ctx.shadowBlur  = 4;
+        ctx.fillText(item.label, r - 8, 4);
+        ctx.restore();
+    });
+
+    // Centre
+    ctx.beginPath();
+    ctx.arc(cx, cy, 22, 0, 2 * Math.PI);
+    ctx.fillStyle = "#0e0f1a";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.15)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
+
+drawWheel("wheel-classe", WHEEL_CLASSES);
+drawWheel("wheel-race",   WHEEL_RACES);
+
+// ── Animation spin ────────────────────────────────────────────────────────
+function animateSpin(canvasId, items, durationMs, finalAngle, onDone) {
+    const start     = performance.now();
+    const startAngle = 0;
+    const totalSpin  = (Math.PI * 2 * 8) + finalAngle; // 8 tours + position finale
+
+    function frame(now) {
+        const elapsed  = now - start;
+        const progress = Math.min(elapsed / durationMs, 1);
+        // Easing out cubic
+        const ease = 1 - Math.pow(1 - progress, 3);
+        const angle = startAngle + totalSpin * ease;
+        drawWheel(canvasId, items, angle);
+        if (progress < 1) {
+            requestAnimationFrame(frame);
+        } else {
+            drawWheel(canvasId, items, finalAngle);
+            onDone();
+        }
+    }
+    requestAnimationFrame(frame);
+}
+
+// ── Pull ──────────────────────────────────────────────────────────────────
+window.pull = async function(type) {
+    if (spinning[type]) return;
+    spinning[type] = true;
+
+    const btn = document.getElementById(`btn-pull-${type}`);
+    const resultPanel = document.getElementById(`result-${type}`);
+    btn.disabled = true;
+    resultPanel.classList.remove("show");
+
+    try {
+        const res = await apiFetch(`/api/gacha/pull/${type}`, { method: "POST" });
+        if (res.error) { toast(res.error, "error"); return; }
+
+        // Trouve l'index dans la roue pour pointer dessus
+        const items   = type === "classe" ? WHEEL_CLASSES : WHEEL_RACES;
+        const nameKey = res.result.name.split(" ")[0]; // premier mot
+        const idx     = items.findIndex(i => i.label.toLowerCase().includes(nameKey.toLowerCase().split(" ")[0])) || 0;
+        const sliceAngle = (2 * Math.PI) / items.length;
+        // Angle pour pointer sur cet élément (en haut = -PI/2)
+        const targetAngle = -(Math.PI / 2) - (idx * sliceAngle) - (sliceAngle / 2);
+        const normalizedAngle = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+        animateSpin(`wheel-${type}`, items, 3500, normalizedAngle, () => {
+            showResult(type, res);
+            spinning[type] = false;
+            btn.disabled = false;
+
+            // Mise à jour tickets
+            if (type === "classe") {
+                document.getElementById("tc-count").textContent = res.tickets_left;
+                document.getElementById("current-classe").textContent = res.result.name;
+            } else {
+                document.getElementById("tr-count").textContent = res.tickets_left;
+                document.getElementById("current-race").textContent = res.result.name;
+            }
+
+            // Historique
+            sessionHistory.unshift({ type, result: res.result, rarity: res.rarity });
+            renderHistory();
+        });
+    } catch(e) {
+        toast(e.message, "error");
+        spinning[type] = false;
+        btn.disabled   = false;
+    }
+};
+
+function showResult(type, res) {
+    const panel  = document.getElementById(`result-${type}`);
+    const color  = RARITY_COLORS[res.rarity] || "#fff";
+    document.getElementById(`rn-${type}`).textContent   = res.result.name;
+    document.getElementById(`rb-${type}`).innerHTML     = `<span class="rarity-badge" style="color:${color};border-color:${color}">${RARITY_LABELS[res.rarity] || res.rarity}</span>`;
+    document.getElementById(`rbx-${type}`).textContent  = res.result.bonus || "";
+    panel.classList.add("show");
+    panel.style.border = `1px solid ${color}`;
+    panel.style.background = `${color}18`;
+    if (res.old) {
+        toast(`${res.old ? res.old + " → " : ""}${res.result.name} (${RARITY_LABELS[res.rarity]})`, res.rarity === "legendaire" ? "success" : "info");
+    }
+}
+
+function renderHistory() {
+    const el = document.getElementById("history-list");
+    if (!sessionHistory.length) {
+        el.innerHTML = `<span style="color:var(--muted);font-size:.88rem">Aucun tirage pour l'instant.</span>`;
+        return;
+    }
+    el.innerHTML = sessionHistory.slice(0, 10).map(h => {
+        const color = RARITY_COLORS[h.rarity] || "#fff";
+        return `<div class="history-row">
+            <span class="h-type">${h.type === "classe" ? "🎫" : "🎟️"}</span>
+            <span class="h-name">${h.result.name}</span>
+            <span class="rarity-badge" style="color:${color};border-color:${color};font-size:.72rem">${RARITY_LABELS[h.rarity]}</span>
+        </div>`;
+    }).join("");
+}
+
+// ── Quête ─────────────────────────────────────────────────────────────────
+async function loadQuest() {
+    const q = await apiFetch("/api/quests/daily").catch(() => null);
+    if (!q) return;
+
+    document.getElementById("q-icon").textContent  = q.icon;
+    document.getElementById("q-label").textContent = q.label;
+    const rewardLabels = Object.entries(q.rewards || {}).map(([k, v]) =>
+        `+${v} ${k === "tickets_classe" ? "🎫 Ticket Classe" : "🎟️ Ticket Race"}`
+    ).join(", ");
+    document.getElementById("q-reward").textContent = `Récompense : ${rewardLabels}`;
+
+    const pct = Math.min(100, Math.round((q.progress / q.target) * 100));
+    document.getElementById("q-fill").style.width   = pct + "%";
+    document.getElementById("q-numbers").textContent = `${q.progress} / ${q.target}`;
+
+    if (q.completed) {
+        document.getElementById("q-done").style.display  = "inline";
+        document.getElementById("q-claim-btn").style.display = "none";
+    } else if (q.progress >= q.target) {
+        document.getElementById("q-claim-btn").style.display = "inline-block";
+    }
+}
+
+window.claimQuest = async function() {
+    const res = await apiFetch("/api/quests/claim", { method: "POST" });
+    if (res.error) { toast(res.error, "error"); return; }
+    toast("Récompense réclamée ! " + res.rewards.join(", "), "success");
+    document.getElementById("q-claim-btn").style.display = "none";
+    document.getElementById("q-done").style.display = "inline";
+    loadInfo();
+};
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function loadInfo() {
+    const [info, profile] = await Promise.all([
+        apiFetch("/api/gacha/info"),
+        apiFetch("/api/profile"),
+    ]);
+    window.__profile = profile;
+    await loadNavUser();
+
+    document.getElementById("tc-count").textContent = info.tickets_classe || 0;
+    document.getElementById("tr-count").textContent = info.tickets_race   || 0;
+
+    const cls  = info.current_classe;
+    const race = info.current_race;
+    document.getElementById("current-classe").textContent = cls  || "Aucune";
+    document.getElementById("current-race").textContent   = race || "Aucune";
+}
+
+loadInfo();
+loadQuest();
+</script>
+</body>
+</html>
