@@ -450,46 +450,45 @@ from datetime import datetime
 
 @tasks.loop(minutes=1)
 async def check_vocal_points_loop():
-    """Vérifie toutes les minutes les salons vocaux et distribue les points."""
+    """Vérifie les salons vocaux chaque minute et met à jour les points + profils."""
     try:
         for guild in bot.guilds:
             for vc in guild.voice_channels:
-                # On filtre les vrais membres (pas les bots, et pas les gens tout seuls)
+                # Filtrer pour ne garder que les vrais joueurs (pas les bots)
                 membres_actifs = [m for m in vc.members if not m.bot]
                 
-                # Condition : Il faut être au moins 2 dans le salon pour gagner des points
+                # SÉCURITÉ ANTI-SOLO : Il faut être au moins 2 dans le salon
                 if len(membres_actifs) < 2:
                     continue
                 
                 for member in membres_actifs:
-                    # Sécurité Anti-AFK : Pas de points si mute ou sourdine
+                    # SÉCURITÉ ANTI-AFK : Pas de points si mute ou sourdine
                     if member.voice.self_mute or member.voice.self_deaf:
                         continue
                     
                     uid = str(member.id)
-                    username = member.name
-                    # On récupère l'ID de l'avatar (évite le bug "undefined" sur le site)
+                    
+                    # ── C'EST ICI QUE TU METS LE CODE DE L'AVATAR ──
                     avatar_id = member.avatar.key if member.avatar else None
 
-                    # Mise à jour MongoDB en temps réel (1 minute = 1 point)
-                    # Si tu veux garder le système de 1 point toutes les 6 minutes, change la valeur du $inc ci-dessous
+                    # Mise à jour dans MongoDB (Points vocaux + Pseudo + Avatar)
                     db.users.update_one(
                         {"user_id": uid},
                         {
-                            "$inc": {"vocal_points": 1}, 
+                            "$inc": {"vocal_points": 1}, # +1 point vocal toutes les minutes
                             "$set": {
-                                "username": username,
-                                "avatar": avatar_id
+                                "username": member.name,
+                                "avatar": avatar_id  # Enregistre/Met à jour l'avatar en BDD
                             }
                         },
-                        upsert=True # Crée le profil proprement s'il n'existe pas
+                        upsert=True # Crée le profil si c'est la première fois
                     )
-                    print(f"[VOCAL] +1 point accordé en temps réel à {member.display_name}")
+                    print(f"[VOCAL] Points et avatar mis à jour pour {member.name}")
 
     except Exception as e:
-        print(f"[VOCAL ERROR] Erreur dans la boucle vocale : {e}")
+        print(f"[VOCAL ERROR] Erreur dans la boucle : {e}")
 
-# IMPORTANT : Lance la boucle dès que le bot est prêt
+# IMPORTANT : Lancer la boucle au démarrage du bot
 @bot.event
 async def on_ready():
     print(f"[BOT] Connecté en tant que {bot.user.name}")
