@@ -30,7 +30,7 @@ export async function loadNavUser() {
         // On utilise le profil déjà chargé sur la page si dispo
         const profile = window.__profile;
         if (!profile) return;
-        const avatarUrl = discordAvatar(profile.discord_id, profile.avatar, 64);
+        const avatarUrl = discordAvatar(profile.user_id, profile.avatar, 64);
         el.innerHTML = `
             <img id="nav-avatar" src="${avatarUrl}" alt="avatar" crossorigin="anonymous" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
             <span id="nav-username">${profile.global_name || profile.username || "Joueur"}</span>
