@@ -15,6 +15,7 @@ export function renderNav(activePage = "") {
         <a href="skilltree.html" ${activePage === "skilltree" ? 'class="active"' : ""}>Skill Tree</a>
         <a href="pixelmap.html"  ${activePage === "pixelmap"  ? 'class="active"' : ""}>Pixel Map</a>
         <a href="leaderboard.html" ${activePage === "leaderboard" ? 'class="active"' : ""}>Classement</a>
+        <a href="codes.html" ${activePage === "codes" ? 'class="active"' : ""}>🎁 Codes</a>
         <div id="nav-user" style="display:flex;align-items:center;gap:.6rem;margin-left:.5rem"></div>
     `;
     document.body.prepend(nav);
@@ -30,7 +31,7 @@ export async function loadNavUser() {
         if (!profile) return;
         const avatarUrl = discordAvatar(profile.discord_id, profile.avatar, 64);
         el.innerHTML = `
-            <img id="nav-avatar" src="${avatarUrl}" alt="avatar">
+            <img id="nav-avatar" src="${avatarUrl}" alt="avatar" crossorigin="anonymous" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
             <span id="nav-username">${profile.global_name || profile.username || "Joueur"}</span>
             <button class="btn-outline" style="font-size:.8rem;padding:.3rem .8rem" onclick="import('./static/js/api.js').then(m=>m.logout())">Déco</button>
         `;
