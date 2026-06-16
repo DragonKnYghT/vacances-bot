@@ -425,7 +425,9 @@ async def check_vocal_points_loop():
 
                     # CORRECTION ICI : On utilise l'accès direct au client mongo stocké dans DataManager
                     # Si ton DataManager utilise db.db, adapte cette ligne en db.db.users.update_one
-                    db.client["vacances_bot"].users.update_one(
+                    # Correction de la ligne de mise à jour MongoDB dans la boucle vocale de ton bot :
+                    from data_manager import users_col
+                    users_col.update_one(
                         {"user_id": uid},
                         {
                             "$inc": {"vocal_points": 1}, # +1 point vocal toutes les minutes
