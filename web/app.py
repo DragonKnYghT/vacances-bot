@@ -600,34 +600,42 @@ def choose_class():
 # Routes Classement
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.route("/api/leaderboard")
+@app.route("/api/leaderboard", methods=["GET"])
 def get_leaderboard():
-    pipeline = [
-        {"$addFields": {"total": {"$add": [
-            {"$ifNull": ["$vocal_points", 0]},
-            {"$ifNull": ["$message_points", 0]},
-            {"$ifNull": ["$activity_points", 0]},
-            {"$ifNull": ["$minigame_points", 0]},
-        ]}}},
-        {"$sort": {"total": -1}},
-        {"$limit": 20},
-        {"$project": {
-            "_id": 0,
-            "user_id": 1,
-            "username": 1,
-            "global_name": 1,
-            "avatar": 1,
-            "classe": 1,
-            "total": 1,
-            "vocal_points": 1,
-            "message_points": 1,
-            "activity_points": 1,
-            "minigame_points": 1,
-        }}
-    ]
-    results = list(db.users.aggregate(pipeline))
-    return jsonify({"leaderboard": results})
-
+    # On récupère les utilisateurs triés par points décroissants (Top 10)
+    users = list(db.users.find().sort([
+        ("vocal_points", -1),
+        ("message_points", -1),
+        ("activity_points", -1),
+        ("minigame_points", -1)
+    ]).limit(10))
+    
+    leaderboard = []
+    for u in users:
+        # Sécurité : On calcule le total proprement pour chaque joueur
+        total = (
+            u.get("vocal_points", 0) +
+            u.get("message_points", 0) +
+            u.get("activity_points", 0) +
+            u.get("minigame_points", 0)
+        )
+        
+        leaderboard.append({
+            "user_id": str(u.get("user_id", "")), # On force en string pour le JS
+            "username": u.get("username", "Joueur Anonyme"), # Nom par défaut propre
+            "avatar": u.get("avatar") or None, # Évite le "undefined" si pas d'avatar
+            "classe": u.get("classe"),
+            "race": u.get("race"),
+            "total_points": total,
+            "details": {
+                "vocal": u.get("vocal_points", 0),
+                "messages": u.get("message_points", 0),
+                "activity": u.get("activity_points", 0),
+                "minigames": u.get("minigame_points", 0)
+            }
+        })
+        
+    return jsonify(leaderboard)
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
