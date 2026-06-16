@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codes — Serveur Vacances</title>
+    <link rel="stylesheet" href="static/css/global.css">
+    <style>
+        .codes-wrap {
+            max-width: 480px;
+            margin: 4rem auto;
+            padding: 0 1rem;
+        }
+
+        .codes-card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .codes-card .icon { font-size: 3.5rem; margin-bottom: .75rem; }
+        .codes-card h1   { font-size: 1.6rem; font-weight: 900; margin-bottom: .4rem; }
+        .codes-card p    { color: var(--muted); font-size: .95rem; margin-bottom: 1.75rem; line-height: 1.6; }
+
+        .code-input-row {
+            display: flex;
+            gap: .6rem;
+            margin-bottom: 1rem;
+        }
+
+        #code-input {
+            flex: 1;
+            background: var(--bg3);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            padding: .75rem 1rem;
+            color: var(--text);
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            font-family: var(--font);
+            transition: border-color .2s;
+        }
+        #code-input::placeholder { letter-spacing: 0; font-weight: 400; text-transform: none; color: var(--muted); }
+        #code-input:focus { outline: none; border-color: var(--accent); }
+        #code-input.valid   { border-color: var(--green); }
+        #code-input.invalid { border-color: var(--red); }
+
+        #btn-redeem {
+            padding: .75rem 1.4rem;
+            font-size: .95rem;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+
+        /* Preview récompenses */
+        #preview-box {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: .85rem 1.1rem;
+            margin-bottom: 1rem;
+            display: none;
+            text-align: left;
+        }
+        #preview-box.show { display: block; }
+        #preview-box .preview-label {
+            font-size: .75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            margin-bottom: .5rem;
+            font-weight: 700;
+        }
+        .reward-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .3rem;
+            background: rgba(61,214,140,.12);
+            color: var(--green);
+            border: 1px solid rgba(61,214,140,.3);
+            border-radius: 99px;
+            padding: .25rem .75rem;
+            font-size: .85rem;
+            font-weight: 700;
+            margin: .2rem;
+        }
+
+        /* Résultat */
+        #result-box {
+            border-radius: 12px;
+            padding: 1.1rem 1.25rem;
+            margin-top: .75rem;
+            display: none;
+            text-align: left;
+        }
+        #result-box.show    { display: block; }
+        #result-box.success {
+            background: rgba(61,214,140,.1);
+            border: 1px solid var(--green);
+        }
+        #result-box.error {
+            background: rgba(240,92,92,.1);
+            border: 1px solid var(--red);
+        }
+        #result-title { font-weight: 800; font-size: 1rem; margin-bottom: .4rem; }
+        #result-box.success #result-title { color: var(--green); }
+        #result-box.error   #result-title { color: var(--red); }
+        #result-rewards { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .5rem; }
+
+        /* Historique */
+        .history-section { margin-top: 2rem; text-align: left; }
+        .history-section h2 {
+            font-size: .8rem; color: var(--muted);
+            text-transform: uppercase; letter-spacing: .06em;
+            font-weight: 700; margin-bottom: .75rem;
+        }
+        .history-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: .6rem .85rem;
+            background: var(--bg3); border-radius: 8px;
+            margin-bottom: .4rem; font-size: .88rem;
+        }
+        .history-code { font-weight: 800; letter-spacing: .05em; }
+        .history-rewards { color: var(--green); font-size: .8rem; }
+    </style>
+</head>
+<body>
+<div id="nav-placeholder"></div>
+
+<div class="codes-wrap">
+    <div class="codes-card">
+        <div class="icon">🎁</div>
+        <h1>Codes Promo</h1>
+        <p>Entre un code pour obtenir des récompenses exclusives — points, matériaux, pixels et plus encore !</p>
+
+        <div class="code-input-row">
+            <input
+                type="text"
+                id="code-input"
+                placeholder="Entre ton code..."
+                maxlength="24"
+                autocomplete="off"
+                spellcheck="false"
+            >
+            <button class="btn-primary" id="btn-redeem">Activer</button>
+        </div>
+
+        <!-- Preview avant activation -->
+        <div id="preview-box">
+            <div class="preview-label">🎁 Récompenses de ce code</div>
+            <div id="preview-rewards"></div>
+        </div>
+
+        <!-- Résultat -->
+        <div id="result-box">
+            <div id="result-title"></div>
+            <div id="result-msg" style="font-size:.88rem;color:var(--muted)"></div>
+            <div id="result-rewards"></div>
+        </div>
+
+        <!-- Historique session -->
+        <div class="history-section" id="history-section" style="display:none">
+            <h2>✅ Codes activés cette session</h2>
+            <div id="history-list"></div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+import { api } from "./static/js/api.js";
+import { renderNav, loadNavUser, requireAuth, toast } from "./static/js/ui.js";
+
+renderNav("codes");
+if (!requireAuth()) throw new Error("not auth");
+
+const input      = document.getElementById("code-input");
+const btnRedeem  = document.getElementById("btn-redeem");
+const previewBox = document.getElementById("preview-box");
+const previewRew = document.getElementById("preview-rewards");
+const resultBox  = document.getElementById("result-box");
+const resultTitle= document.getElementById("result-title");
+const resultMsg  = document.getElementById("result-msg");
+const resultRews = document.getElementById("result-rewards");
+
+const history = [];
+let checkTimeout = null;
+let lastChecked  = "";
+
+// ── Init nav ──────────────────────────────────────────────────────────────
+const profile = await api.getProfile().catch(() => null);
+if (profile) { window.__profile = profile; await loadNavUser(); }
+
+// ── Aperçu en temps réel ──────────────────────────────────────────────────
+input.addEventListener("input", () => {
+    const code = input.value.trim().toUpperCase();
+    input.className = "";
+    hideResult();
+    previewBox.classList.remove("show");
+
+    if (code.length < 3) return;
+    if (code === lastChecked) return;
+
+    clearTimeout(checkTimeout);
+    checkTimeout = setTimeout(() => checkPreview(code), 500);
+});
+
+async function checkPreview(code) {
+    try {
+        const res = await fetch(`${(await import("./static/js/api.js")).API_BASE || ""}/api/codes/check`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${localStorage.getItem("jwt_token")}`
+            },
+            body: JSON.stringify({ code })
+        }).then(r => r.json());
+
+        lastChecked = code;
+
+        if (res.valid && res.rewards?.length) {
+            input.classList.add("valid");
+            previewRew.innerHTML = res.rewards.map(r => `<span class="reward-chip">🎁 ${r}</span>`).join("");
+            previewBox.classList.add("show");
+        } else if (res.already_used) {
+            input.classList.add("invalid");
+            showResult("error", "Déjà utilisé", "Tu as déjà activé ce code.");
+        } else if (res.exhausted) {
+            input.classList.add("invalid");
+            showResult("error", "Code épuisé", "Ce code a atteint sa limite d'utilisations.");
+        } else {
+            input.classList.add("invalid");
+        }
+    } catch(_) {}
+}
+
+// ── Activation ─────────────────────────────────────────────────────────────
+async function redeem() {
+    const code = input.value.trim().toUpperCase();
+    if (!code) { toast("Entre un code !", "error"); return; }
+
+    btnRedeem.disabled   = true;
+    btnRedeem.textContent = "...";
+
+    try {
+        const { api } = await import("./static/js/api.js");
+        const res = await fetch(`https://vacances-bot-web.onrender.com/api/codes/redeem`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${localStorage.getItem("jwt_token")}`
+            },
+            body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            input.classList.remove("valid");
+            input.classList.add("invalid");
+            previewBox.classList.remove("show");
+            showResult("error", "Erreur ❌", data.error || "Code invalide");
+        } else {
+            input.classList.remove("invalid");
+            input.classList.add("valid");
+            previewBox.classList.remove("show");
+            showResult("success", "Code activé ! 🎉", "", data.rewards);
+
+            // Ajoute à l'historique
+            history.push({ code, rewards: data.rewards });
+            renderHistory();
+
+            input.value = "";
+            input.className = "";
+            lastChecked = "";
+        }
+    } catch(e) {
+        showResult("error", "Erreur réseau", e.message);
+    } finally {
+        btnRedeem.disabled   = false;
+        btnRedeem.textContent = "Activer";
+    }
+}
+
+btnRedeem.addEventListener("click", redeem);
+input.addEventListener("keydown", e => { if (e.key === "Enter") redeem(); });
+
+// ── UI helpers ─────────────────────────────────────────────────────────────
+function showResult(type, title, msg, rewards = []) {
+    resultBox.className = `result-box show ${type}`;
+    resultBox.classList.add("show", type);
+    resultTitle.textContent = title;
+    resultMsg.textContent   = msg;
+    resultRews.innerHTML    = rewards.map(r => `<span class="reward-chip">${r}</span>`).join("");
+}
+
+function hideResult() {
+    resultBox.className = "result-box";
+    resultBox.classList.remove("show", "success", "error");
+}
+
+function renderHistory() {
+    const section = document.getElementById("history-section");
+    const list    = document.getElementById("history-list");
+    if (!history.length) { section.style.display = "none"; return; }
+    section.style.display = "block";
+    list.innerHTML = history.map(h => `
+        <div class="history-item">
+            <span class="history-code">🎁 ${h.code}</span>
+            <span class="history-rewards">${h.rewards.join(" · ")}</span>
+        </div>
+    `).join("");
+}
+</script>
+</body>
+</html>
