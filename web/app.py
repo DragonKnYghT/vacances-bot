@@ -176,7 +176,7 @@ def require_auth(f):
     return decorated
 
 def get_user_doc(user_id: str) -> dict:
-    """Récupère ou crée le document utilisateur dans MongoDB."""
+    """Récupère ou crée le document utilisateur dans MongoDB avec sécurité Gacha."""
     doc = db.users.find_one({"user_id": user_id})
     if not doc:
         doc = {
@@ -187,6 +187,11 @@ def get_user_doc(user_id: str) -> dict:
             "activity_points": 0,
             "minigame_points": 0,
             "classe": None,
+            "race": None,
+            "tickets_classe": 0,
+            "tickets_race": 0,
+            "classe_history": [],
+            "race_history": [],
             "materials": {},
             "pixels_remaining": 0,
             "unlocked_worlds": ["monde_1"],
@@ -194,17 +199,49 @@ def get_user_doc(user_id: str) -> dict:
             "created_at": datetime.utcnow()
         }
         db.users.insert_one(doc)
+    else:
+        # Sécurité pour les anciens comptes : on s'assure que les listes et tickets existent
+        modified = False
+        updates = {}
+        if "tickets_classe" not in doc:
+            doc["tickets_classe"] = 0
+            updates["tickets_classe"] = 0
+        if "tickets_race" not in doc:
+            doc["tickets_race"] = 0
+            updates["tickets_race"] = 0
+        if "race" not in doc:
+            doc["race"] = None
+            updates["race"] = None
+        
+        if updates:
+            db.users.update_one({"user_id": user_id}, {"$set": updates})
+            
     return doc
 
 def apply_class_discount(user_doc: dict, item_key: str, base_price: int) -> int:
-    classe = user_doc.get("classe")
-    if not classe or classe not in CLASSES:
+    user_classe = user_doc.get("classe")
+    if not user_classe:
         return base_price
-    bonuses = CLASSES[classe]["bonuses"]
+
+    # On cherche la classe de l'utilisateur dans la liste du Gacha pour obtenir ses vrais bonus
+    classe_meta = next((c for c in GACHA_CLASSES if c["id"] == user_classe), None)
+    
+    # Si pas trouvé dans le Gacha, on cherche dans l'ancien dictionnaire de secours
+    if not classe_meta:
+        classe_meta = CLASSES.get(user_classe)
+
+    if not classe_meta:
+        return base_price
+
     item = SHOP_ITEMS.get(item_key, {})
+    
+    # Gestion du coût des pixels
     if item.get("category") == "pixel":
-        return int(base_price * bonuses.get("pixel_cost", 1.0))
-    discount = bonuses.get("shop_discount", 0.0)
+        pixel_cost_multiplier = classe_meta.get("pixel_cost", 1.0)
+        return int(base_price * pixel_cost_multiplier)
+
+    # Gestion des réductions de la boutique
+    discount = classe_meta.get("shop_discount", 0.0)
     return int(base_price * (1 - discount))
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -381,22 +418,28 @@ def buy_item():
         return jsonify({"error": "Pas assez de points"}), 400
 
     mat_field = f"materials.{item_key}"
-    update = {"$inc": {"spent_points": price, mat_field: qty}}
+    
+    # Préparation propre des dictionnaires MongoDB pour éviter les KeyError en Python
+    update = {
+        "$inc": {"spent_points": price}
+    }
+
+    if item_key not in ("pixel_1", "ticket_classe", "ticket_race", "ticket_duo"):
+        update["$inc"][mat_field] = qty
 
     if item_key == "pixel_1":
         update["$inc"]["pixels_remaining"] = 10 * qty
-    if item_key == "ticket_classe":
+    elif item_key == "ticket_classe":
         update["$inc"]["tickets_classe"] = qty
-    if item_key == "ticket_race":
+    elif item_key == "ticket_race":
         update["$inc"]["tickets_race"] = qty
-    if item_key == "ticket_duo":
+    elif item_key == "ticket_duo":
         update["$inc"]["tickets_classe"] = qty
         update["$inc"]["tickets_race"] = qty
         update["$inc"]["pixels_remaining"] = 10 * qty
 
     db.users.update_one({"user_id": request.user_id}, update)
     return jsonify({"ok": True, "spent": price, "remaining_points": available - price})
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes Skill Tree
 # ─────────────────────────────────────────────────────────────────────────────
