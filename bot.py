@@ -443,27 +443,58 @@ async def on_message(message: discord.Message):
 #  POINTS VOCAL
 # ──────────────────────────────────────────
 
-# Stocke l'heure d'entrée en vocal de chaque membre
-_vocal_join_times = {}
+from discord.ext import tasks
+from datetime import datetime
 
+# Tu peux supprimer le dictionnaire _vocal_join_times qui ne servira plus
+
+@tasks.loop(minutes=1)
+async def check_vocal_points_loop():
+    """Vérifie toutes les minutes les salons vocaux et distribue les points."""
+    try:
+        for guild in bot.guilds:
+            for vc in guild.voice_channels:
+                # On filtre les vrais membres (pas les bots, et pas les gens tout seuls)
+                membres_actifs = [m for m in vc.members if not m.bot]
+                
+                # Condition : Il faut être au moins 2 dans le salon pour gagner des points
+                if len(membres_actifs) < 2:
+                    continue
+                
+                for member in membres_actifs:
+                    # Sécurité Anti-AFK : Pas de points si mute ou sourdine
+                    if member.voice.self_mute or member.voice.self_deaf:
+                        continue
+                    
+                    uid = str(member.id)
+                    username = member.name
+                    # On récupère l'ID de l'avatar (évite le bug "undefined" sur le site)
+                    avatar_id = member.avatar.key if member.avatar else None
+
+                    # Mise à jour MongoDB en temps réel (1 minute = 1 point)
+                    # Si tu veux garder le système de 1 point toutes les 6 minutes, change la valeur du $inc ci-dessous
+                    db.users.update_one(
+                        {"user_id": uid},
+                        {
+                            "$inc": {"vocal_points": 1}, 
+                            "$set": {
+                                "username": username,
+                                "avatar": avatar_id
+                            }
+                        },
+                        upsert=True # Crée le profil proprement s'il n'existe pas
+                    )
+                    print(f"[VOCAL] +1 point accordé en temps réel à {member.display_name}")
+
+    except Exception as e:
+        print(f"[VOCAL ERROR] Erreur dans la boucle vocale : {e}")
+
+# IMPORTANT : Lance la boucle dès que le bot est prêt
 @bot.event
-async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-    if member.bot:
-        return
-    uid = str(member.id)
-
-    # Entrée en vocal
-    if before.channel is None and after.channel is not None:
-        _vocal_join_times[uid] = datetime.now(TIMEZONE)
-
-    # Sortie du vocal
-    elif before.channel is not None and after.channel is None:
-        join_time = _vocal_join_times.pop(uid, None)
-        if join_time:
-            minutes = int((datetime.now(TIMEZONE) - join_time).total_seconds() / 60)
-            if minutes >= 1:  # minimum 1 minute pour compter
-                db.add_vocal_points(uid, minutes)
-                print(f"[VOCAL] {member.display_name} : +{minutes} min → {minutes // 6} pts vocal")
+async def on_ready():
+    print(f"[BOT] Connecté en tant que {bot.user.name}")
+    if not check_vocal_points_loop.is_running():
+        check_vocal_points_loop.start()
 
 # ──────────────────────────────────────────
 #  POINTS RÉACTIONS (participation MAIS.../Dilemme/Sondage)
