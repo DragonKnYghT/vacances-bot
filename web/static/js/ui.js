@@ -15,6 +15,7 @@ export function renderNav(activePage = "") {
         <a href="skilltree.html" ${activePage === "skilltree" ? 'class="active"' : ""}>Skill Tree</a>
         <a href="pixelmap.html"  ${activePage === "pixelmap"  ? 'class="active"' : ""}>Pixel Map</a>
         <a href="leaderboard.html" ${activePage === "leaderboard" ? 'class="active"' : ""}>Classement</a>
+        <a href="gacha.html" ${activePage === "gacha" ? 'class="active"' : ""}>🎰 Gacha</a>
         <a href="codes.html" ${activePage === "codes" ? 'class="active"' : ""}>🎁 Codes</a>
         <div id="nav-user" style="display:flex;align-items:center;gap:.6rem;margin-left:.5rem"></div>
     `;
