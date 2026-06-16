@@ -397,17 +397,71 @@ async def test_bot(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ──────────────────────────────────────────
-#  EVENTS
+#  POINTS VOCAL
+# ──────────────────────────────────────────
+
+@tasks.loop(minutes=1)
+async def check_vocal_points_loop():
+    """Vérifie les salons vocaux chaque minute et met à jour les points + profils."""
+    try:
+        for guild in bot.guilds:
+            for vc in guild.voice_channels:
+                # Filtrer pour ne garder que les vrais joueurs (pas les bots)
+                membres_actifs = [m for m in vc.members if not m.bot]
+                
+                # SÉCURITÉ ANTI-SOLO : Il faut être au moins 2 dans le salon
+                if len(membres_actifs) < 2:
+                    continue
+                
+                for member in membres_actifs:
+                    # SÉCURITÉ ANTI-AFK : Pas de points si mute ou sourdine
+                    if member.voice.self_mute or member.voice.self_deaf:
+                        continue
+                    
+                    uid = str(member.id)
+                    
+                    # Récupération de l'avatar avec sécurité
+                    avatar_id = member.avatar.key if member.avatar else None
+
+                    # CORRECTION ICI : On utilise l'accès direct au client mongo stocké dans DataManager
+                    # Si ton DataManager utilise db.db, adapte cette ligne en db.db.users.update_one
+                    db.client["vacances_bot"].users.update_one(
+                        {"user_id": uid},
+                        {
+                            "$inc": {"vocal_points": 1}, # +1 point vocal toutes les minutes
+                            "$set": {
+                                "username": member.name,
+                                "avatar": avatar_id  # Enregistre/Met à jour l'avatar en BDD
+                            }
+                        },
+                        upsert=True
+                    )
+                    print(f"[VOCAL] Points et avatar mis à jour pour {member.name}")
+
+    except Exception as e:
+        print(f"[VOCAL ERROR] Erreur dans la boucle : {e}")
+
+
+# ──────────────────────────────────────────
+#  EVENTS (FUSIONNÉ ET CORRIGÉ)
 # ──────────────────────────────────────────
 
 @bot.event
 async def on_ready():
     print(f"✅ Bot connecté : {bot.user}")
+    
+    # Configuration des menus et synchronisation des commandes
     setup_menu_command(tree, bot)
     await tree.sync()
+    
+    # Démarrage de TOUTES les tâches automatiques (sans doublon !)
     daily_scheduler.start()
     weekly_scheduler.start()
     roi_indices_scheduler.start()
+    if not check_vocal_points_loop.is_running():
+        check_vocal_points_loop.start()
+        print("[TASKS] Boucle vocale démarrée avec succès.")
+        
     channel = bot.get_channel(CHANNEL_ID)
     if channel:
         state = db.get_state()
@@ -440,63 +494,7 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 # ──────────────────────────────────────────
-#  POINTS VOCAL
-# ──────────────────────────────────────────
-
-from discord.ext import tasks
-from datetime import datetime
-
-# Tu peux supprimer le dictionnaire _vocal_join_times qui ne servira plus
-
-@tasks.loop(minutes=1)
-async def check_vocal_points_loop():
-    """Vérifie les salons vocaux chaque minute et met à jour les points + profils."""
-    try:
-        for guild in bot.guilds:
-            for vc in guild.voice_channels:
-                # Filtrer pour ne garder que les vrais joueurs (pas les bots)
-                membres_actifs = [m for m in vc.members if not m.bot]
-                
-                # SÉCURITÉ ANTI-SOLO : Il faut être au moins 2 dans le salon
-                if len(membres_actifs) < 2:
-                    continue
-                
-                for member in membres_actifs:
-                    # SÉCURITÉ ANTI-AFK : Pas de points si mute ou sourdine
-                    if member.voice.self_mute or member.voice.self_deaf:
-                        continue
-                    
-                    uid = str(member.id)
-                    
-                    # ── C'EST ICI QUE TU METS LE CODE DE L'AVATAR ──
-                    avatar_id = member.avatar.key if member.avatar else None
-
-                    # Mise à jour dans MongoDB (Points vocaux + Pseudo + Avatar)
-                    db.users.update_one(
-                        {"user_id": uid},
-                        {
-                            "$inc": {"vocal_points": 1}, # +1 point vocal toutes les minutes
-                            "$set": {
-                                "username": member.name,
-                                "avatar": avatar_id  # Enregistre/Met à jour l'avatar en BDD
-                            }
-                        },
-                        upsert=True # Crée le profil si c'est la première fois
-                    )
-                    print(f"[VOCAL] Points et avatar mis à jour pour {member.name}")
-
-    except Exception as e:
-        print(f"[VOCAL ERROR] Erreur dans la boucle : {e}")
-
-# IMPORTANT : Lancer la boucle au démarrage du bot
-@bot.event
-async def on_ready():
-    print(f"[BOT] Connecté en tant que {bot.user.name}")
-    if not check_vocal_points_loop.is_running():
-        check_vocal_points_loop.start()
-
-# ──────────────────────────────────────────
-#  POINTS RÉACTIONS (participation MAIS.../Dilemme/Sondage)
+#  POINTS RÉACTIONS
 # ──────────────────────────────────────────
 
 # Emojis qui donnent des points de participation selon l'activité
@@ -519,13 +517,11 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     state = db.get_state()
     week_num = state["current_week"]
 
-    # Vérifie que c'est bien sur le bon salon
     if payload.channel_id != CHANNEL_ID:
         return
 
     uid = str(payload.user_id)
 
-    # Évite de compter deux fois (si l'utilisateur retire et remet une réaction)
     if db.has_played_today(uid, week_num):
         return
 
