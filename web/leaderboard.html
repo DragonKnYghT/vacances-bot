@@ -51,15 +51,28 @@ import { renderNav, loadNavUser, toast, fmt } from "./static/js/ui.js";
 renderNav("leaderboard");
 
 async function init() {
-    const [lbData, profileData] = await Promise.all([
-        api.getLeaderboard(),
+    // 1. Récupération des données
+    const [leaderboard, profileData] = await Promise.all([
+        api.getLeaderboard(), // Reçoit directement le tableau des joueurs
         isLoggedIn() ? api.getProfile().catch(() => null) : Promise.resolve(null),
     ]);
     if (profileData) { window.__profile = profileData; await loadNavUser(); }
 
-    const { leaderboard } = lbData;
-    const myId = profileData?.discord_id;
-    const maxPts = leaderboard[0]?.total || 1;
+    // 2. Sécurité si la base de données est vide
+    if (!leaderboard || leaderboard.length === 0) {
+        document.getElementById("main-content").innerHTML = `
+            <div class="page">
+                <h1 style="font-size:1.6rem;font-weight:900;margin-bottom:1.5rem">🏆 Classement</h1>
+                <div class="card" style="padding:2rem; text-align:center; color:var(--muted)">
+                    Aucun joueur dans le classement pour le moment.
+                </div>
+            </div>`;
+        return;
+    }
+
+    // 3. Extraction de l'ID utilisateur et du score max (grâce à total_points calculé par app.py)
+    const myId = profileData?.user_id; 
+    const maxPts = leaderboard[0]?.total_points || 1;
 
     document.getElementById("main-content").innerHTML = `
         <div class="page">
@@ -90,11 +103,15 @@ const CLASS_ICONS = {
 };
 
 function renderRow(p, rank, maxPts, myId) {
-    const isMe = p.discord_id === myId;
-    const avatar = discordAvatar(p.discord_id, p.avatar, 72);
+    // Utilisation des bonnes clés synchronisées avec app.py
+    const isMe = String(p.user_id) === String(myId);
+    const avatar = discordAvatar(p.user_id, p.avatar, 72);
     const name = p.global_name || p.username || "Joueur";
     const rankClass = rank <= 3 ? `rank-${rank}` : "";
-    const pct = Math.round((p.total / maxPts) * 100);
+    
+    // Calcul du pourcentage basé sur total_points
+    const pct = Math.round((p.total_points / maxPts) * 100);
+    const details = p.details || { vocal: 0, messages: 0, activity: 0, minigames: 0 };
 
     return `
         <tr class="${isMe ? "highlight" : ""}">
@@ -106,11 +123,11 @@ function renderRow(p, rank, maxPts, myId) {
                 </div>
             </td>
             <td>${p.classe ? (CLASS_ICONS[p.classe] || "") + " " + p.classe : "<span style='color:var(--muted)'>—</span>"}</td>
-            <td><strong>💠 ${fmt(p.total)}</strong></td>
+            <td><strong>💠 ${fmt(p.total_points)}</strong></td>
             <td>
                 <div class="pts-bar-wrap">
                     <div class="progress-bar"><div class="fill" style="width:${pct}%"></div></div>
-                    <div class="pts-label">🎙️${fmt(p.vocal_points)} 💬${fmt(p.message_points)} 📅${fmt(p.activity_points)} 🎮${fmt(p.minigame_points)}</div>
+                    <div class="pts-label">🎙️${fmt(details.vocal)} 💬${fmt(details.messages)} 📅${fmt(details.activity)} 🎮${fmt(details.minigames)}</div>
                 </div>
             </td>
         </tr>
