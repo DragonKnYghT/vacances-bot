@@ -103,13 +103,13 @@ const CLASS_ICONS = {
 };
 
 function renderRow(p, rank, maxPts, myId) {
-    // Utilisation des bonnes clés synchronisées avec app.py
+    // CORRECTION ICI : On utilise p.user_id au lieu de p.discord_id
     const isMe = String(p.user_id) === String(myId);
     const avatar = discordAvatar(p.user_id, p.avatar, 72);
     const name = p.global_name || p.username || "Joueur";
     const rankClass = rank <= 3 ? `rank-${rank}` : "";
     
-    // Calcul du pourcentage basé sur total_points
+    // CORRECTION ICI : On utilise p.total_points calculé par app.py
     const pct = Math.round((p.total_points / maxPts) * 100);
     const details = p.details || { vocal: 0, messages: 0, activity: 0, minigames: 0 };
 
