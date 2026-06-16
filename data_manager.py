@@ -181,16 +181,24 @@ class DataManager:
         )
 
     def get_user_site_data(self, user_id: str) -> dict:
+        """Données pour le profil du site : UNIQUEMENT messages, vocal, pixels. 
+        Suppression totale du choix de classe manuel et des points d'activités/mini-jeux."""
         doc = users_col.find_one({"user_id": user_id}, {"_id": 0}) or {}
-        total = self.get_user_total(user_id)["total"]
+        
+        # On calcule le total uniquement avec le vocal et les messages
+        vocal = doc.get("vocal_points", 0)
+        messages = doc.get("message_points", 0)
+        total = vocal + messages
+        
         return {
             "user_id": user_id,
+            "username": doc.get("username", "Joueur Inconnu"),
+            "avatar": doc.get("avatar", None),
             "total_points": total,
-            "vocal_points": doc.get("vocal_points", 0),
-            "message_points": doc.get("message_points", 0),
-            "minigame_points": doc.get("minigame_points", 0),
-            "classe": doc.get("classe", None),
+            "vocal_points": vocal,
+            "message_points": messages,
             "pixels": doc.get("pixels", []),
+            # On a retiré : "classe" et "minigame_points"
         }
 
     def set_user_classe(self, user_id: str, classe: str):
