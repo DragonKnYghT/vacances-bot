@@ -84,6 +84,9 @@ SHOP_ITEMS = {
     "cristal": {"name": "Cristal 💎",   "price": 60,  "category": "materiau"},
     "magie":   {"name": "Essence magique ✨", "price": 100, "category": "special"},
     "pixel_1": {"name": "Pack Pixels ×10 🎨", "price": 50, "category": "pixel"},
+    "ticket_classe": {"name": "Ticket Classe 🎫", "price": 80, "category": "gacha"},
+    "ticket_race":   {"name": "Ticket Race 🎟️",  "price": 80, "category": "gacha"},
+    "ticket_duo":    {"name": "Duo Classe+Race 🎰","price": 140,"category": "gacha"},
 }
 
 # ── Skill tree ────────────────────────────────────────────────────────────────
@@ -382,6 +385,14 @@ def buy_item():
 
     if item_key == "pixel_1":
         update["$inc"]["pixels_remaining"] = 10 * qty
+    if item_key == "ticket_classe":
+        update["$inc"]["tickets_classe"] = qty
+    if item_key == "ticket_race":
+        update["$inc"]["tickets_race"] = qty
+    if item_key == "ticket_duo":
+        update["$inc"]["tickets_classe"] = qty
+        update["$inc"]["tickets_race"] = qty
+        update["$inc"]["pixels_remaining"] = 10 * qty
 
     db.users.update_one({"user_id": request.user_id}, update)
     return jsonify({"ok": True, "spent": price, "remaining_points": available - price})
@@ -675,3 +686,244 @@ def check_code():
         "exhausted":    exhausted,
         "rewards":      rewards_display,
     })
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GACHA — Classes & Races
+# ─────────────────────────────────────────────────────────────────────────────
+
+import random as _random
+
+RARITIES = {
+    "commun":    {"label": "Commun",    "color": "#7a7f9a", "chance": 55},
+    "rare":      {"label": "Rare",      "color": "#5ca8f0", "chance": 30},
+    "epique":    {"label": "Épique",    "color": "#7c5cfc", "chance": 12},
+    "legendaire":{"label": "Légendaire","color": "#f5c542", "chance": 3},
+}
+
+GACHA_CLASSES = [
+    # Communs
+    {"id":"soldat",      "name":"Soldat ⚔️",        "rarity":"commun",    "bonus":"Résistance +10% dégâts","upgrade_discount":0.05,"shop_discount":0.0,"pixel_cost":1.0},
+    {"id":"paysan",      "name":"Paysan 🌾",         "rarity":"commun",    "bonus":"Matériaux +5% à la récolte","upgrade_discount":0.0,"shop_discount":0.05,"pixel_cost":1.0},
+    {"id":"marchand",    "name":"Marchand 💰",       "rarity":"commun",    "bonus":"-10% en boutique","upgrade_discount":0.0,"shop_discount":0.10,"pixel_cost":1.0},
+    {"id":"eclaireur",   "name":"Éclaireur 🗺️",     "rarity":"commun",    "bonus":"Maps débloquées +vite","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":1.0,"map_discount":0.15},
+    # Rares
+    {"id":"guerrier",    "name":"Guerrier 🛡️",      "rarity":"rare",      "bonus":"-15% améliorations","upgrade_discount":0.15,"shop_discount":0.0,"pixel_cost":1.0},
+    {"id":"architecte",  "name":"Architecte 🏗️",   "rarity":"rare",      "bonus":"Pixels à moitié prix","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":0.5},
+    {"id":"alchimiste",  "name":"Alchimiste ⚗️",    "rarity":"rare",      "bonus":"-20% matériaux spéciaux","upgrade_discount":0.0,"shop_discount":0.15,"pixel_cost":1.0},
+    {"id":"barde",       "name":"Barde 🎵",          "rarity":"rare",      "bonus":"+2pts par activité","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":1.0,"activity_bonus":2},
+    # Épiques
+    {"id":"mage",        "name":"Mage 🔮",           "rarity":"epique",    "bonus":"-10% boutique + bonus quiz","upgrade_discount":0.0,"shop_discount":0.10,"pixel_cost":1.0,"activity_bonus":3},
+    {"id":"paladin",     "name":"Paladin ✨",        "rarity":"epique",    "bonus":"-20% améliorations + résistance","upgrade_discount":0.20,"shop_discount":0.0,"pixel_cost":1.0},
+    {"id":"ninja",       "name":"Ninja 🥷",          "rarity":"epique",    "bonus":"Pixels ×3 par achat","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":0.33,"pixel_triple":True},
+    {"id":"druide",      "name":"Druide 🌿",         "rarity":"epique",    "bonus":"Matériaux nature ×2","upgrade_discount":0.05,"shop_discount":0.10,"pixel_cost":0.8},
+    # Légendaires
+    {"id":"roi",         "name":"Roi 👑",            "rarity":"legendaire","bonus":"TOUT -25%","upgrade_discount":0.25,"shop_discount":0.25,"pixel_cost":0.75},
+    {"id":"sorcier",     "name":"Sorcier Noir 🧙",   "rarity":"legendaire","bonus":"+5pts toutes activités + pixels gratuits","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":0.0,"activity_bonus":5},
+    {"id":"titan",       "name":"Titan ⚡",          "rarity":"legendaire","bonus":"Double points vocal/messages","upgrade_discount":0.10,"shop_discount":0.10,"pixel_cost":0.5},
+]
+
+GACHA_RACES = [
+    # Communs
+    {"id":"humain",      "name":"Humain 🧑",         "rarity":"commun",    "bonus":"+5% tous les points"},
+    {"id":"gobelin",     "name":"Gobelin 👺",        "rarity":"commun",    "bonus":"Prix boutique -5%"},
+    {"id":"orc",         "name":"Orc 💪",            "rarity":"commun",    "bonus":"Points vocal +10%"},
+    {"id":"halfelin",    "name":"Halfelin 🍀",       "rarity":"commun",    "bonus":"Chance gacha +2%"},
+    # Rares
+    {"id":"elfe",        "name":"Elfe 🧝",           "rarity":"rare",      "bonus":"Points messages +15%"},
+    {"id":"nain",        "name":"Nain ⛏️",           "rarity":"rare",      "bonus":"Matériaux -10%"},
+    {"id":"demon",       "name":"Démon 😈",          "rarity":"rare",      "bonus":"Points activités +10%"},
+    {"id":"beastman",   "name":"Homme-Bête 🐾",     "rarity":"rare",      "bonus":"Points vocal +20%"},
+    # Épiques
+    {"id":"dragon",      "name":"Semi-Dragon 🐉",    "rarity":"epique",    "bonus":"Pixels +50% par achat"},
+    {"id":"ange",        "name":"Ange 😇",           "rarity":"epique",    "bonus":"-20% toute la boutique"},
+    {"id":"fantome",     "name":"Fantôme 👻",        "rarity":"epique",    "bonus":"Réapparaît 1×/sem si éliminé"},
+    {"id":"necromant",   "name":"Nécromanien 💀",    "rarity":"epique",    "bonus":"Récupère 50% mat. dépensés"},
+    # Légendaires
+    {"id":"phenix",      "name":"Phénix 🔥",         "rarity":"legendaire","bonus":"Reroll gratuit 1×/semaine"},
+    {"id":"celeste",     "name":"Être Céleste ⭐",   "rarity":"legendaire","bonus":"Tous les bonus ×1.5"},
+    {"id":"ancien",      "name":"Ancien 🌌",         "rarity":"legendaire","bonus":"Débloque map secrète"},
+]
+
+def weighted_pick(pool):
+    """Tire un élément au hasard en respectant les chances de rareté."""
+    rarity_weights = {r: RARITIES[r]["chance"] for r in RARITIES}
+    # Groupe par rareté
+    by_rarity = {}
+    for item in pool:
+        r = item["rarity"]
+        by_rarity.setdefault(r, []).append(item)
+
+    rarities     = list(by_rarity.keys())
+    weights      = [rarity_weights.get(r, 1) for r in rarities]
+    chosen_rarity = _random.choices(rarities, weights=weights, k=1)[0]
+    return _random.choice(by_rarity[chosen_rarity]), chosen_rarity
+
+@app.route("/api/gacha/info")
+@require_auth
+def gacha_info():
+    doc = get_user_doc(request.user_id)
+    return jsonify({
+        "tickets_classe": doc.get("tickets_classe", 0),
+        "tickets_race":   doc.get("tickets_race", 0),
+        "current_classe": doc.get("classe"),
+        "current_race":   doc.get("race"),
+        "rarities":       RARITIES,
+    })
+
+@app.route("/api/gacha/pull/classe", methods=["POST"])
+@require_auth
+def gacha_pull_classe():
+    doc = get_user_doc(request.user_id)
+    if doc.get("tickets_classe", 0) < 1:
+        return jsonify({"error": "Pas de ticket classe ! Achètes-en en boutique."}), 400
+
+    result, rarity = weighted_pick(GACHA_CLASSES)
+    old_classe = doc.get("classe")
+
+    db.users.update_one(
+        {"user_id": request.user_id},
+        {
+            "$inc": {"tickets_classe": -1},
+            "$set": {"classe": result["id"]},
+            "$push": {"classe_history": {
+                "from": old_classe, "to": result["id"],
+                "rarity": rarity, "at": datetime.utcnow()
+            }}
+        }
+    )
+    return jsonify({
+        "result":   result,
+        "rarity":   rarity,
+        "rarity_info": RARITIES[rarity],
+        "old":      old_classe,
+        "tickets_left": doc.get("tickets_classe", 1) - 1,
+    })
+
+@app.route("/api/gacha/pull/race", methods=["POST"])
+@require_auth
+def gacha_pull_race():
+    doc = get_user_doc(request.user_id)
+    if doc.get("tickets_race", 0) < 1:
+        return jsonify({"error": "Pas de ticket race ! Achètes-en en boutique."}), 400
+
+    result, rarity = weighted_pick(GACHA_RACES)
+    old_race = doc.get("race")
+
+    db.users.update_one(
+        {"user_id": request.user_id},
+        {
+            "$inc": {"tickets_race": -1},
+            "$set": {"race": result["id"]},
+            "$push": {"race_history": {
+                "from": old_race, "to": result["id"],
+                "rarity": rarity, "at": datetime.utcnow()
+            }}
+        }
+    )
+    return jsonify({
+        "result":   result,
+        "rarity":   rarity,
+        "rarity_info": RARITIES[rarity],
+        "old":      old_race,
+        "tickets_left": doc.get("tickets_race", 1) - 1,
+    })
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QUÊTES QUOTIDIENNES
+# ─────────────────────────────────────────────────────────────────────────────
+
+import hashlib as _hashlib
+
+QUEST_TYPES = [
+    {"id":"messages", "label":"Envoie {n} messages",       "icon":"💬", "targets":[5,10,20],  "rewards":{"tickets_classe":1}},
+    {"id":"vocal",    "label":"Passe {n} minutes en vocal", "icon":"🎙️","targets":[5,15,30],  "rewards":{"tickets_race":1}},
+    {"id":"pixels",   "label":"Pose {n} pixels sur la map", "icon":"🎨","targets":[5,10,25],  "rewards":{"tickets_classe":1,"tickets_race":1}},
+    {"id":"messages2","label":"Envoie {n} messages",        "icon":"💬","targets":[15,30,50], "rewards":{"tickets_classe":2}},
+    {"id":"boutique", "label":"Achète {n} articles en boutique","icon":"🛒","targets":[1,3,5],"rewards":{"tickets_race":2}},
+]
+
+def get_daily_quest(user_id: str) -> dict:
+    """Génère une quête déterministe par joueur et par jour."""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    seed  = int(_hashlib.md5(f"{user_id}{today}".encode()).hexdigest(), 16)
+    rng   = _random.Random(seed)
+
+    quest_type = QUEST_TYPES[seed % len(QUEST_TYPES)]
+    target     = rng.choice(quest_type["targets"])
+    return {
+        "id":      quest_type["id"],
+        "label":   quest_type["label"].replace("{n}", str(target)),
+        "icon":    quest_type["icon"],
+        "target":  target,
+        "rewards": quest_type["rewards"],
+        "date":    today,
+    }
+
+@app.route("/api/quests/daily")
+@require_auth
+def get_daily_quest_route():
+    quest = get_daily_quest(request.user_id)
+    doc   = get_user_doc(request.user_id)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    # Progression actuelle
+    progress = 0
+    qid      = quest["id"]
+    if qid in ("messages", "messages2"):
+        # Compare les messages d'aujourd'hui
+        progress = doc.get("daily_messages", 0) if doc.get("daily_date") == today else 0
+    elif qid == "vocal":
+        progress = doc.get("daily_vocal_minutes", 0) if doc.get("daily_date") == today else 0
+    elif qid == "pixels":
+        progress = doc.get("daily_pixels", 0) if doc.get("daily_date") == today else 0
+    elif qid == "boutique":
+        progress = doc.get("daily_purchases", 0) if doc.get("daily_date") == today else 0
+
+    completed = doc.get("quest_completed_date") == today
+
+    return jsonify({
+        **quest,
+        "progress":  min(progress, quest["target"]),
+        "completed": completed,
+        "tickets_classe": doc.get("tickets_classe", 0),
+        "tickets_race":   doc.get("tickets_race", 0),
+    })
+
+@app.route("/api/quests/claim", methods=["POST"])
+@require_auth
+def claim_quest():
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    doc   = get_user_doc(request.user_id)
+
+    if doc.get("quest_completed_date") == today:
+        return jsonify({"error": "Quête déjà réclamée aujourd'hui"}), 400
+
+    quest    = get_daily_quest(request.user_id)
+    progress = 0
+    qid      = quest["id"]
+    if qid in ("messages","messages2"):
+        progress = doc.get("daily_messages", 0) if doc.get("daily_date") == today else 0
+    elif qid == "vocal":
+        progress = doc.get("daily_vocal_minutes", 0) if doc.get("daily_date") == today else 0
+    elif qid == "pixels":
+        progress = doc.get("daily_pixels", 0) if doc.get("daily_date") == today else 0
+    elif qid == "boutique":
+        progress = doc.get("daily_purchases", 0) if doc.get("daily_date") == today else 0
+
+    if progress < quest["target"]:
+        return jsonify({"error": f"Pas encore terminé ({progress}/{quest['target']})"}), 400
+
+    rewards = quest["rewards"]
+    db.users.update_one(
+        {"user_id": request.user_id},
+        {
+            "$inc": rewards,
+            "$set": {"quest_completed_date": today}
+        }
+    )
+    rewards_display = []
+    for field, amt in rewards.items():
+        label = {"tickets_classe":"🎫 Ticket Classe","tickets_race":"🎟️ Ticket Race"}.get(field, field)
+        rewards_display.append(f"+{amt} {label}")
+
+    return jsonify({"ok": True, "rewards": rewards_display})
