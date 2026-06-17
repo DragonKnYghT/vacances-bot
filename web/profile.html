@@ -151,7 +151,7 @@ const CLASSES_INFO = {
     explorateur: { bonus_text: "−25% de réduction pour débloquer les Mondes" },
 };
 
-// ── AJOUT ICI : Descriptions et Avantages des Races ──
+// Descriptions et Avantages des Races
 const RACES_INFO = {
     humain:   { name: "Humain",   icon: "🧑", desc: "Polyvalents et ambitieux, s'adaptent à toutes les situations.", bonus: "+5% de points globaux bonus" },
     elfe:     { name: "Elfe",     icon: "🧝", desc: "Créatures mystiques connectées à la magie et à la nature antique.", bonus: "Régénération de pixels 10% plus rapide" },
@@ -176,6 +176,9 @@ const RACE_ICONS = {
     "nain": "⛏️", "demon": "😈", "beastman": "🐾", "dragon": "🐉", "ange": "😇", 
     "fantome": "👻", "necromant": "💀", "phenix": "🔥", "celeste": "⭐", "ancien": "🌌" 
 };
+
+// ── FIX ICI : Déclaration de MAT_ICONS réintégrée ──
+const MAT_ICONS = { pierre:"🪨", bois:"🪵", fer:"⚙️", cristal:"💎", magie:"✨" };
 
 async function init() {
     const [profile, classesResp] = await Promise.all([api.getProfile(), api.getClasses()]);
