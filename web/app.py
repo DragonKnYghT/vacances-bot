@@ -176,7 +176,7 @@ def require_auth(f):
     return decorated
 
 def get_user_doc(user_id: str) -> dict:
-    """Récupère ou crée le document utilisateur dans MongoDB avec sécurité Gacha."""
+    """Récupère ou crée le document utilisateur dans MongoDB avec sécurité Gacha et Mondes."""
     doc = db.users.find_one({"user_id": user_id})
     if not doc:
         doc = {
@@ -194,14 +194,13 @@ def get_user_doc(user_id: str) -> dict:
             "race_history": [],
             "materials": {},
             "pixels_remaining": 0,
-            "unlocked_worlds": ["monde_1"],
+            "unlocked_worlds": ["monde_1"],  # Ajout d'office pour les nouveaux
             "unlocked_nodes": [],
             "created_at": datetime.utcnow()
         }
         db.users.insert_one(doc)
     else:
         # Sécurité pour les anciens comptes : on s'assure que les listes et tickets existent
-        modified = False
         updates = {}
         if "tickets_classe" not in doc:
             doc["tickets_classe"] = 0
@@ -212,6 +211,14 @@ def get_user_doc(user_id: str) -> dict:
         if "race" not in doc:
             doc["race"] = None
             updates["race"] = None
+            
+        # 🟢 CORRECTIF : Si la liste n'existe pas ou ne contient pas monde_1, on répare !
+        unlocked_worlds = doc.get("unlocked_worlds", [])
+        if not unlocked_worlds or "monde_1" not in unlocked_worlds:
+            if "monde_1" not in unlocked_worlds:
+                unlocked_worlds.insert(0, "monde_1")
+            doc["unlocked_worlds"] = unlocked_worlds
+            updates["unlocked_worlds"] = unlocked_worlds
         
         if updates:
             db.users.update_one({"user_id": user_id}, {"$set": updates})
@@ -349,6 +356,10 @@ def get_profile():
     doc["classe"] = doc.get("classe", "Aucune")
     doc["race"] = doc.get("race", "Aucune")
 
+    # 🟢 CORRECTIF : Double-sécurité d'affichage pour le front-end
+    if "monde_1" not in doc.get("unlocked_worlds", []):
+        doc["unlocked_worlds"] = ["monde_1"] + doc.get("unlocked_worlds", [])
+
     # Calcul du rang basé sur les points cumulés historiques
     pipeline = [
         {"$addFields": {"total_cumule": {"$add": [
@@ -483,7 +494,7 @@ def unlock_node():
         return jsonify({"error": "Nœud inconnu"}), 404
 
     node = SKILL_TREE[node_key]
-    doc = get_user_doc(request.user_id)
+    doc = get_user_doc(request.user_id) # Appel direct qui va mettre à jour/réparer le profil si nécessaire
     unlocked = doc.get("unlocked_nodes", [])
     materials = doc.get("materials", {})
 
@@ -499,7 +510,7 @@ def unlock_node():
     inc = {f"materials.{mat}": -qty for mat, qty in node["cost"].items()}
     inc_update = {"$inc": inc, "$push": {"unlocked_nodes": node_key}}
 
-    # Déverrouillle un monde si applicable
+    # Déverrouille un monde si applicable
     if "unlocks" in node:
         inc_update["$addToSet"] = {"unlocked_worlds": node["unlocks"]}
 
