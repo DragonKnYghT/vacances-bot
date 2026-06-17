@@ -112,19 +112,28 @@ class DataManager:
         return {"total": total, "draftbot_delta": total * POINTS_TO_DRAFTBOT}
 
     def get_all_scores(self) -> dict:
+        """
+        Génère le classement basé sur les points CUMULÉS (historique des gains).
+        Filtre et supprime les joueurs anonymes résiduels.
+        """
         all_users = {}
-        for doc in scores_col.find():
+        # On ne prend que les utilisateurs ayant un user_id numérique valide (exclut 'Joueur #')
+        for doc in users_col.find({"user_id": {"$regex": "^[0-9]+$"}}):
             uid = doc["user_id"]
-            if uid not in all_users:
-                all_users[uid] = {"total": 0, "draftbot_delta": 0}
-            all_users[uid]["total"] += doc.get("points", 0)
-        for doc in users_col.find():
-            uid = doc["user_id"]
-            if uid not in all_users:
-                all_users[uid] = {"total": 0, "draftbot_delta": 0}
-            all_users[uid]["total"] += doc.get("minigame_points", 0)
-        for uid in all_users:
-            all_users[uid]["draftbot_delta"] = all_users[uid]["total"] * POINTS_TO_DRAFTBOT
+            
+            # Points cumulés (historique complet des gains sans les déductions des achats)
+            vocal_cumule = doc.get("vocal_points_cumules", doc.get("vocal_points", 0))
+            messages_cumule = doc.get("message_points_cumules", doc.get("message_points", 0))
+            total_cumule = vocal_cumule + messages_cumule
+            
+            if total_cumule > 0:
+                all_users[uid] = {
+                    "username": doc.get("username", "Joueur Inconnu"),
+                    "avatar": doc.get("avatar", None),
+                    "total_cumule": total_cumule,
+                    "classe": doc.get("classe", "Aucune"),
+                    "race": doc.get("race", "Aucune") # Ajout de la race pour le classement
+                }
         return all_users
 
     def save_daily_message(self, msg_id: int, week: int, content: dict):
@@ -181,24 +190,22 @@ class DataManager:
         )
 
     def get_user_site_data(self, user_id: str) -> dict:
-        """Données pour le profil du site : UNIQUEMENT messages, vocal, pixels. 
-        Suppression totale du choix de classe manuel et des points d'activités/mini-jeux."""
-        doc = users_col.find_one({"user_id": user_id}, {"_id": 0}) or {}
+        """Données épurées pour le profil : utilise user_id (et non discord_id)"""
+        doc = users_col.find_one({"user_id": str(user_id)}, {"_id": 0}) or {}
         
-        # On calcule le total uniquement avec le vocal et les messages
+        # Solde actuel utilisable sur le site
         vocal = doc.get("vocal_points", 0)
         messages = doc.get("message_points", 0)
-        total = vocal + messages
+        solde_actuel = vocal + messages
         
         return {
-            "user_id": user_id,
+            "user_id": str(user_id),
             "username": doc.get("username", "Joueur Inconnu"),
             "avatar": doc.get("avatar", None),
-            "total_points": total,
-            "vocal_points": vocal,
-            "message_points": messages,
+            "total_points": solde_actuel, # Solde actuel pour la page profil
             "pixels": doc.get("pixels", []),
-            # On a retiré : "classe" et "minigame_points"
+            "classe": doc.get("classe", "Aucune"),
+            "race": doc.get("race", "Aucune") # Ajout de la race
         }
 
     def set_user_classe(self, user_id: str, classe: str):
