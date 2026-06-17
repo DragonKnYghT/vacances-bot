@@ -135,10 +135,8 @@
     <h1>🎰 Gacha</h1>
     <p class="subtitle">Tourne la roue pour obtenir ta classe et ta race ! Attention — chaque tirage remplace l'ancienne.</p>
 
-    <!-- Raretés -->
     <div class="rarity-table" id="rarity-table"></div>
 
-    <!-- Tickets -->
     <div class="tickets-bar">
         <div class="ticket-badge">
             <span class="tb-icon">🎫</span>
@@ -163,7 +161,6 @@
         </a>
     </div>
 
-    <!-- Quête quotidienne -->
     <div class="quest-card" id="quest-card">
         <div class="quest-icon" id="q-icon">⏳</div>
         <div class="quest-info">
@@ -178,9 +175,7 @@
         <span class="quest-completed" id="q-done" style="display:none">✅ Complétée !</span>
     </div>
 
-    <!-- Roues -->
     <div class="wheels-grid">
-        <!-- Classe -->
         <div class="wheel-card">
             <h2>🧙 Classe actuelle : <span id="current-classe">—</span></h2>
             <div class="wheel-wrap">
@@ -197,7 +192,6 @@
             </div>
         </div>
 
-        <!-- Race -->
         <div class="wheel-card">
             <h2>🐉 Race actuelle : <span id="current-race">—</span></h2>
             <div class="wheel-wrap">
@@ -215,7 +209,6 @@
         </div>
     </div>
 
-    <!-- Historique -->
     <div class="history-card">
         <h2>📜 Historique de la session</h2>
         <div id="history-list"><span style="color:var(--muted);font-size:.88rem">Aucun tirage pour l'instant.</span></div>
@@ -246,18 +239,18 @@ const RARITY_LABELS = {
     commun: "Commun", rare: "Rare", epique: "Épique", legendaire: "Légendaire"
 };
 
-// Pool simulé pour la roue (affichage uniquement)
+// Pool mis à jour pour correspondre à tes classes réelles (incluant Marchand)
 const WHEEL_CLASSES = [
-    {label:"Soldat",color:"#7a7f9a"},{label:"Paysan",color:"#7a7f9a"},
-    {label:"Guerrier",color:"#5ca8f0"},{label:"Architecte",color:"#5ca8f0"},
-    {label:"Mage",color:"#7c5cfc"},{label:"Paladin",color:"#7c5cfc"},
-    {label:"Roi",color:"#f5c542"},{label:"Titan",color:"#f5c542"},
+    {label:"Guerrier",color:"#5ca8f0"}, {label:"Mage",color:"#7c5cfc"},
+    {label:"Chasseur",color:"#5ca8f0"},{label:"Voleur",color:"#7a7f9a"},
+    {label:"Paladin",color:"#7c5cfc"}, {label:"Marchand",color:"#f5c542"},
+    {label:"Soldat",color:"#7a7f9a"},   {label:"Paysan",color:"#7a7f9a"}
 ];
 const WHEEL_RACES = [
-    {label:"Humain",color:"#7a7f9a"},{label:"Gobelin",color:"#7a7f9a"},
-    {label:"Elfe",color:"#5ca8f0"},{label:"Démon",color:"#5ca8f0"},
-    {label:"Dragon",color:"#7c5cfc"},{label:"Ange",color:"#7c5cfc"},
-    {label:"Phénix",color:"#f5c542"},{label:"Ancien",color:"#f5c542"},
+    {label:"Humain",color:"#7a7f9a"},  {label:"Elfe",color:"#5ca8f0"},
+    {label:"Nain",color:"#5ca8f0"},   {label:"Orc",color:"#e67e22"},
+    {label:"Titan",color:"#9b59b6"},  {label:"Gobelin",color:"#7a7f9a"},
+    {label:"Démon",color:"#7c5cfc"},  {label:"Dragon",color:"#f5c542"}
 ];
 
 let sessionHistory = [];
@@ -323,7 +316,7 @@ drawWheel("wheel-race",   WHEEL_RACES);
 
 // ── Animation spin ────────────────────────────────────────────────────────
 function animateSpin(canvasId, items, durationMs, finalAngle, onDone) {
-    const start     = performance.now();
+    const start      = performance.now();
     const startAngle = 0;
     const totalSpin  = (Math.PI * 2 * 8) + finalAngle; // 8 tours + position finale
 
@@ -344,7 +337,7 @@ function animateSpin(canvasId, items, durationMs, finalAngle, onDone) {
     requestAnimationFrame(frame);
 }
 
-// ── Pull ──────────────────────────────────────────────────────────────────
+// ── Pull (Fonction synchronisée corrigée) ──────────────────────────────────
 window.pull = async function(type) {
     if (spinning[type]) return;
     spinning[type] = true;
@@ -356,14 +349,25 @@ window.pull = async function(type) {
 
     try {
         const res = await apiFetch(`/api/gacha/pull/${type}`, { method: "POST" });
-        if (res.error) { toast(res.error, "error"); return; }
+        if (res.error) { 
+            toast(res.error, "error"); 
+            spinning[type] = false;
+            btn.disabled = false;
+            return; 
+        }
 
-        // Trouve l'index dans la roue pour pointer dessus
-        const items   = type === "classe" ? WHEEL_CLASSES : WHEEL_RACES;
-        const nameKey = res.result.name.split(" ")[0]; // premier mot
-        const idx     = items.findIndex(i => i.label.toLowerCase().includes(nameKey.toLowerCase().split(" ")[0])) || 0;
+        const items = type === "classe" ? WHEEL_CLASSES : WHEEL_RACES;
+        const serverObtainedName = res.result.name;
+
+        // Recherche stricte et insensible à la casse
+        let idx = items.findIndex(i => serverObtainedName.toLowerCase().includes(i.label.toLowerCase()));
+        
+        // Si l'élément du serveur n'est pas dans la roue, on le force temporairement sur une case pour éviter le crash
+        if (idx === -1) idx = 0;
+
         const sliceAngle = (2 * Math.PI) / items.length;
-        // Angle pour pointer sur cet élément (en haut = -PI/2)
+        
+        // Formule pour pointer précisément au milieu du segment correspondant (en haut = -PI/2)
         const targetAngle = -(Math.PI / 2) - (idx * sliceAngle) - (sliceAngle / 2);
         const normalizedAngle = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 
