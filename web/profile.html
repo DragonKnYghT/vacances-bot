@@ -21,23 +21,41 @@
             width: 80px; height: 80px;
             border-radius: 50%;
             border: 3px solid var(--accent);
+            object-fit: cover;
         }
         .profile-header h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: .3rem; }
         .profile-header .meta { color: var(--muted); font-size: .9rem; display: flex; gap: .75rem; flex-wrap: wrap; }
 
-        /* ── Stats grid ── */
-        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
-        @media (max-width: 700px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
-
-        .stat-card {
+        /* ── AJUSTEMENT : Barres d'activité sur toute la largeur (Cadre Rouge) ── */
+        .activity-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
             background: var(--bg2);
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: 1.2rem;
+            padding: 1.5rem;
+            width: 100%;
         }
-        .stat-card .icon { font-size: 1.5rem; margin-bottom: .5rem; }
-        .stat-card .val  { font-size: 1.8rem; font-weight: 800; }
-        .stat-card .lbl  { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+        .activity-row {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+        .activity-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .activity-label .pts {
+            color: var(--accent);
+            font-weight: 800;
+        }
+        .activity-container .progress-bar {
+            height: 10px; /* Légèrement plus épaisse pour l'esthétique du profil */
+        }
 
         /* ── Matériaux ── */
         .materials {
@@ -108,7 +126,7 @@ if (!requireAuth()) throw new Error("not auth");
 const WORLDS = {
     monde_1: { name: "La Forêt des Débuts", icon: "🌲" },
     monde_2: { name: "Les Plaines de Feu",  icon: "🔥" },
-    monde_3: { name: "L'Océan Profond",     icon: "🌊" },
+    monde_3: { name: "L'Océan Profond",      icon: "🌊" },
     monde_4: { name: "Le Sommet des Dieux", icon: "⛰️" },
 };
 
@@ -116,7 +134,7 @@ const CLASSES_INFO = {
     guerrier:    { bonus_text: "−15% sur les améliorations" },
     mage:        { bonus_text: "−10% en boutique" },
     architecte:  { bonus_text: "Pixels à moitié prix" },
-    marchand:    { bonus_text: "−20% en boutique" },
+    marchand:    { background: "−20% en boutique" },
     explorateur: { bonus_text: "−25% pour débloquer les maps" },
 };
 
@@ -128,13 +146,25 @@ async function init() {
     await loadNavUser();
 
     const classes = classesResp.classes;
-    const avatarUrl = discordAvatar(profile.discord_id, profile.avatar, 160);
+    
+    // ── FIX AVATAR (Cercle Vert) ──
+    // Remplacement de profile.discord_id par profile.user_id + Fallback de la clé d'avatar
+    const userId = profile.user_id || profile.discord_id;
+    const avatarHash = profile.avatar_hash || profile.avatar || null;
+    const avatarUrl = discordAvatar(userId, avatarHash, 128);
+
+    // Échelle relative pour remplir la jauge
+    const vocalPoints = profile.vocal_points || 0;
+    const messagePoints = profile.message_points || 0;
+    const maxPts = Math.max(vocalPoints, messagePoints, 1);
+    
+    const vocalPct = Math.round((vocalPoints / maxPts) * 100);
+    const messagePct = Math.round((messagePoints / maxPts) * 100);
 
     document.getElementById("main-content").innerHTML = `
         <div class="page">
-            <!-- Header -->
             <div class="profile-header">
-                <img src="${avatarUrl}" alt="avatar">
+                <img src="${avatarUrl}" alt="avatar" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
                 <div>
                     <h1>${profile.global_name || profile.username || "Joueur"}</h1>
                     <div class="meta">
@@ -146,24 +176,30 @@ async function init() {
                 </div>
             </div>
 
-            <!-- Stats -->
             <section>
                 <h2>Points par catégorie</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="icon">🎙️</div>
-                        <div class="val">${fmt(profile.vocal_points)}</div>
-                        <div class="lbl">Vocal</div>
+                <div class="activity-container">
+                    <div class="activity-row">
+                        <div class="activity-label">
+                            <span>🎙️ Vocal (Minutes converties)</span>
+                            <span class="pts">${fmt(vocalPoints)} pts</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="fill" style="width: ${vocalPct}%"></div>
+                        </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="icon">💬</div>
-                        <div class="val">${fmt(profile.message_points)}</div>
-                        <div class="lbl">Messages</div>
+                    <div class="activity-row">
+                        <div class="activity-label">
+                            <span>💬 Messages Envoyés</span>
+                            <span class="pts">${fmt(messagePoints)} pts</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="fill" style="width: ${messagePct}%"></div>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            <!-- Classe -->
             <section>
                 <h2>Classe</h2>
                 ${profile.classe
@@ -180,7 +216,6 @@ async function init() {
                 }
             </section>
 
-            <!-- Matériaux -->
             <section>
                 <h2>Matériaux</h2>
                 <div class="card">
@@ -188,7 +223,6 @@ async function init() {
                 </div>
             </section>
 
-            <!-- Mondes -->
             <section>
                 <h2>Mondes débloqués</h2>
                 <div class="card">
