@@ -340,22 +340,22 @@ def get_profile():
     doc = get_user_doc(request.user_id)
     doc.pop("_id", None)
 
-    # Calcul du total de points
-    doc["total_points"] = (
-        doc.get("vocal_points", 0) +
-        doc.get("message_points", 0) +
-        doc.get("activity_points", 0) +
-        doc.get("minigame_points", 0)
-    )
-    # Classement global
+    # Calcul du solde actuel (uniquement messages + vocal)
+    vocal = doc.get("vocal_points", 0)
+    messages = doc.get("message_points", 0)
+    doc["total_points"] = vocal + messages
+    
+    # On force la présence de la race et de la classe
+    doc["classe"] = doc.get("classe", "Aucune")
+    doc["race"] = doc.get("race", "Aucune")
+
+    # Calcul du rang basé sur les points cumulés historiques
     pipeline = [
-        {"$addFields": {"total": {"$add": [
-            {"$ifNull": ["$vocal_points", 0]},
-            {"$ifNull": ["$message_points", 0]},
-            {"$ifNull": ["$activity_points", 0]},
-            {"$ifNull": ["$minigame_points", 0]},
+        {"$addFields": {"total_cumule": {"$add": [
+            {"$ifNull": ["$vocal_points_cumules", {"$ifNull": ["$vocal_points", 0]}]},
+            {"$ifNull": ["$message_points_cumules", {"$ifNull": ["$message_points", 0]}]}
         ]}}},
-        {"$sort": {"total": -1}},
+        {"$sort": {"total_cumule": -1}},
         {"$group": {"_id": None, "ids": {"$push": "$user_id"}}},
     ]
     result = list(db.users.aggregate(pipeline))
@@ -602,40 +602,35 @@ def choose_class():
 
 @app.route("/api/leaderboard", methods=["GET"])
 def get_leaderboard():
-    # On récupère les utilisateurs triés par points décroissants (Top 10)
-    users = list(db.users.find().sort([
-        ("vocal_points", -1),
-        ("message_points", -1),
-        ("activity_points", -1),
-        ("minigame_points", -1)
-    ]).limit(10))
+    # Filtre strict : Uniquement des identifiants Discord numériques réels
+    users = list(db.users.find({
+        "user_id": {"$regex": "^[0-9]+$"},
+        "username": {"$ne": "Joueur Anonyme"}
+    }))
     
     leaderboard = []
     for u in users:
-        # Sécurité : On calcule le total proprement pour chaque joueur
-        total = (
-            u.get("vocal_points", 0) +
-            u.get("message_points", 0) +
-            u.get("activity_points", 0) +
-            u.get("minigame_points", 0)
-        )
+        # Système de cumul historique (ne baisse pas quand on achète)
+        vocal_cumule = u.get("vocal_points_cumules", u.get("vocal_points", 0))
+        messages_cumule = u.get("message_points_cumules", u.get("message_points", 0))
+        total_historique = vocal_cumule + messages_cumule
         
         leaderboard.append({
-            "user_id": str(u.get("user_id", "")), # On force en string pour le JS
-            "username": u.get("username", "Joueur Anonyme"), # Nom par défaut propre
-            "avatar": u.get("avatar") or None, # Évite le "undefined" si pas d'avatar
-            "classe": u.get("classe"),
-            "race": u.get("race"),
-            "total_points": total,
+            "user_id": str(u.get("user_id", "")),
+            "username": u.get("username", "Joueur"),
+            "avatar": u.get("avatar") or None,
+            "classe": u.get("classe", "Aucune"),
+            "race": u.get("race", "Aucune"), # Ajout de la race
+            "total_points": total_historique, # Points cumulés pour le classement
             "details": {
                 "vocal": u.get("vocal_points", 0),
-                "messages": u.get("message_points", 0),
-                "activity": u.get("activity_points", 0),
-                "minigames": u.get("minigame_points", 0)
+                "messages": u.get("message_points", 0)
             }
         })
         
-    return jsonify(leaderboard)
+    # Tri par points historiques cumulés décroissants
+    leaderboard.sort(key=lambda x: x["total_points"], reverse=True)
+    return jsonify(leaderboard[:10])
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -755,7 +750,7 @@ GACHA_CLASSES = [
     # Communs
     {"id":"soldat",      "name":"Soldat ⚔️",        "rarity":"commun",    "bonus":"Résistance +10% dégâts","upgrade_discount":0.05,"shop_discount":0.0,"pixel_cost":1.0},
     {"id":"paysan",      "name":"Paysan 🌾",         "rarity":"commun",    "bonus":"Matériaux +5% à la récolte","upgrade_discount":0.0,"shop_discount":0.05,"pixel_cost":1.0},
-    {"id":"marchand",    "name":"Marchand 💰",       "rarity":"commun",    "bonus":"-10% en boutique","upgrade_discount":0.0,"shop_discount":0.10,"pixel_cost":1.0},
+    {"id":"marchand",    "name":"Marchand 💰",       "rarity":"commun",    "bonus":"-20% en boutique","upgrade_discount":0.0,"shop_discount":0.20,"pixel_cost":1.0},
     {"id":"eclaireur",   "name":"Éclaireur 🗺️",     "rarity":"commun",    "bonus":"Maps débloquées +vite","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":1.0,"map_discount":0.15},
     # Rares
     {"id":"guerrier",    "name":"Guerrier 🛡️",      "rarity":"rare",      "bonus":"-15% améliorations","upgrade_discount":0.15,"shop_discount":0.0,"pixel_cost":1.0},
@@ -878,6 +873,14 @@ def gacha_pull_race():
         "old":      old_race,
         "tickets_left": doc.get("tickets_race", 1) - 1,
     })
+
+# ── EXEMPLE MATHÉMATIQUE TAXE MARCHAND 20% (À insérer dans ta fonction boutique/vente) ──
+def calculer_vente_marchand(prix_unitaire, quantite):
+    valeur_brute = prix_unitaire * quantite
+    # Calcul strict de la taxe sans résidu flottant : 10 * 0.20 = 2
+    taxe = int(valeur_brute * 0.20) 
+    valeur_nette = valeur_brute - taxe # 10 - 2 = 8
+    return valeur_nette
 
 # ─────────────────────────────────────────────────────────────────────────────
 # QUÊTES QUOTIDIENNES
