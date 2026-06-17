@@ -48,18 +48,26 @@
 </div>
 
 <script type="module">
-// IMPORTS UNIQUES ET NETTOYÉS
-import { isLoggedIn, discordAvatar } from "./static/js/api.js";
+// IMPORTS PROPRES ET UNIQUES (Extraction de "api" et "discordAvatar")
+import { api, discordAvatar, isLoggedIn } from "./static/js/api.js";
 import { renderNav, loadNavUser, fmt } from "./static/js/ui.js";
-//  À METTRE À LA PLACE
-import api from "./static/js/api.js";
 
 renderNav("leaderboard");
 
-const CLASS_ICONS = { "Guerrier": "⚔️", "Mage": "🧙", "Chasseur": "🏹", "Voleur": "🗡️", "Paladin": "🛡️", "Marchand": "🪙" };
-const RACE_ICONS = { "Humain": "🧑", "Elfe": "🧝", "Nain": "🧔", "Orc": "👹", "Titan": "🌋", "Gobelin": "👺", "Démon": "😈", "Dragon": "🐉" };
+// Dictionnaires d'icônes en minuscules pour correspondre aux données brutes de la base de données
+const CLASS_ICONS = { 
+    "guerrier": "⚔️", "mage": "🔮", "architecte": "🏗️", "marchand": "💰", "explorateur": "🗺️",
+    "soldat": "🛡️", "paysan": "🌾", "eclaireur": "🏹", "alchimiste": "⚗️", "barde": "🎵", 
+    "paladin": "✨", "ninja": "🥷", "druide": "🌿", "roi": "👑", "sorcier": "🧙", "titan": "⚡" 
+};
 
-// FONCTION RENDERROW CORRIGÉE (Ordre des arguments : p, rank, maxPts, myId)
+const RACE_ICONS = { 
+    "humain": "🧑", "gobelin": "👺", "orc": "💪", "halfelin": "🍀", "elfe": "🧝", 
+    "nain": "⛏️", "demon": "😈", "beastman": "🐾", "dragon": "🐉", "ange": "😇", 
+    "fantome": "👻", "necromant": "💀", "phenix": "🔥", "celeste": "⭐", "ancien": "🌌" 
+};
+
+// FONCTION RENDERROW CORRIGÉE
 function renderRow(p, rank, maxPts, myId) {
     if (!p || !p.user_id) return "";
     
@@ -71,6 +79,10 @@ function renderRow(p, rank, maxPts, myId) {
     const pct = maxPts > 0 ? Math.round((p.total_points / maxPts) * 100) : 0;
     const details = p.details || { vocal: 0, messages: 0 };
 
+    // Nettoyage des clés pour matcher les dictionnaires d'émojis
+    const raceKey = p.race ? p.race.toLowerCase() : "";
+    const classKey = p.classe ? p.classe.toLowerCase() : "";
+
     return `
         <tr class="${isMe ? "highlight" : ""}">
             <td><span class="rank-num ${rankClass}">${rank <= 3 ? ["🥇","🥈","🥉"][rank-1] : rank}</span></td>
@@ -80,27 +92,27 @@ function renderRow(p, rank, maxPts, myId) {
                     <span class="name">${name}${isMe ? " <span class='tag purple' style='font-size:.7rem'>Toi</span>" : ""}</span>
                 </div>
             </td>
-            <td>${p.race ? (RACE_ICONS[p.race] || "🧬") + " " + p.race : "<span style='color:var(--muted)'>—</span>"}</td>
-            <td>${p.classe ? (CLASS_ICONS[p.classe] || "🎭") + " " + p.classe : "<span style='color:var(--muted)'>—</span>"}</td>
+            <td>${p.race && p.race !== "Aucune" ? (RACE_ICONS[raceKey] || "🧬") + " " + p.race : "<span style='color:var(--muted)'>—</span>"}</td>
+            <td>${p.classe && p.classe !== "Aucune" ? (CLASS_ICONS[classKey] || "🎭") + " " + p.classe : "<span style='color:var(--muted)'>—</span>"}</td>
             <td><strong>💠 ${fmt(p.total_points)}</strong></td>
             <td>
                 <div class="pts-bar-wrap">
                     <div class="progress-bar"><div class="fill" style="width:${pct}%"></div></div>
-                    <div class="pts-label">🎙️ ${fmt(details.vocal)}m | 💬 ${fmt(details.messages)}msg</div>
+                    <div class="pts-label">🎙️ ${fmt(details.vocal)} pts | 💬 ${fmt(details.messages)} pts</div>
                 </div>
             </td>
         </tr>
     `;
 }
 
-// UNIQUE FONCTION INIT() PROPRE
+// FONCTION INIT() CORRIGÉE ET NETTOYÉE
 async function init() {
     let myId = null;
     
-    // 1. Récupération facultative du profil si connecté
+    // 1. Récupération facultative du profil si connecté via l'objet central "api"
     if (isLoggedIn()) {
         try {
-            const profile = await apiFetch("/api/profile");
+            const profile = await api.getProfile();
             window.__profile = profile;
             myId = profile.user_id;
             await loadNavUser();
@@ -109,9 +121,9 @@ async function init() {
         }
     }
 
-    // 2. Récupération du classement depuis l'API
+    // 2. Récupération du classement depuis l'API avec l'objet central "api"
     try {
-        const leaderboard = await apiFetch("/api/leaderboard");
+        const leaderboard = await api.getLeaderboard();
         
         // Sécurité si la base de données ou le classement est vide
         if (!leaderboard || leaderboard.length === 0) {
@@ -127,7 +139,7 @@ async function init() {
 
         const maxPts = leaderboard[0]?.total_points || 1;
 
-        // 3. Injection du tableau complet construit proprement
+        // 3. Injection du tableau complet
         document.getElementById("main-content").innerHTML = `
             <div class="page">
                 <h1 style="font-size:1.6rem;font-weight:900;margin-bottom:1.5rem">🏆 Classement</h1>
