@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One Bloc — Serveur Vacances</title>
+    <link rel="stylesheet" href="static/css/global.css">
+    <style>
+        .oneblock-layout {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        /* Zone du Bloc */
+        .stage-badge {
+            display: inline-block;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            padding: .4rem 1rem;
+            border-radius: 20px;
+            font-weight: 700;
+            color: var(--gold);
+            margin-bottom: 1.5rem;
+        }
+
+        .block-container {
+            margin: 3rem auto;
+            width: 200px;
+            height: 200px;
+            position: relative;
+            cursor: pointer;
+            perspective: 600px;
+        }
+
+        .main-block {
+            width: 100%;
+            height: 100%;
+            background: #4a3525; /* Par défaut terre/bois */
+            border: 4px solid #2d1f16;
+            border-radius: 12px;
+            box-shadow: 0 10px 0 #2d1f16, var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3.5rem;
+            user-select: none;
+            transition: transform 0.05s ease, background 0.2s ease, border-color 0.2s ease;
+        }
+
+        /* Couleurs dynamiques selon le type de bloc */
+        .main-block.wood { background: #8B5A2B; border-color: #5C3A21; box-shadow: 0 10px 0 #5C3A21; }
+        .main-block.stone { background: #7A7A7A; border-color: #4A4A4A; box-shadow: 0 10px 0 #4A4A4A; }
+        .main-block.iron { background: #D4D4D4; border-color: #9E9E9E; box-shadow: 0 10px 0 #9E9E9E; }
+        .main-block.gold { background: #FFD700; border-color: #B8860B; box-shadow: 0 10px 0 #B8860B; }
+        .main-block.diamond { background: #40E0D0; border-color: #008B8B; box-shadow: 0 10px 0 #008B8B; }
+        .main-block.netherite { background: #3A353D; border-color: #211F24; box-shadow: 0 10px 0 #211F24; }
+
+        /* Animation d'impact au clic */
+        .main-block:active {
+            transform: scale(0.92) translateY(8px);
+            box-shadow: 0 2px 0 #2d1f16;
+        }
+
+        /* Grid des ressources récoltées */
+        .resources-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 1rem;
+            margin-top: 2.5rem;
+        }
+
+        .res-card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: .3rem;
+        }
+
+        .res-icon { font-size: 1.8rem; }
+        .res-count { font-size: 1.4rem; font-weight: 800; }
+        .res-label { font-size: .85rem; color: var(--muted); text-transform: capitalize; }
+    </style>
+</head>
+<body>
+
+    <div class="oneblock-layout">
+        <div class="stage-badge" id="current-stage">Phase : Chargement...</div>
+        
+        <h1>⛏️ Le One Bloc</h1>
+        <p class="subtitle">Mine le bloc infini pour récolter des matériaux précieux et faire évoluer le monde.</p>
+
+        <div class="block-container" id="block-clicker">
+            <div class="main-block wood" id="visual-block">📦</div>
+        </div>
+
+        <p id="next-material-hint" style="color: var(--muted); font-size: .9rem;">Prochain bloc : ...</p>
+
+        <h2 style="margin-top: 3rem; font-size: 1.3rem; text-align: left; border-bottom: 1px solid var(--border); padding-bottom: .5rem;">🎒 Tes Matériaux Récoltés</h2>
+        <div class="resources-grid" id="resources-display">
+            </div>
+    </div>
+
+    <script type="module">
+        import { api } from "./static/js/api.js";
+        import { renderNav, loadNavUser, toast, requireAuth, fmt } from "./static/js/ui.js";
+
+        // Sécurité : Rediriger si le joueur n'est pas connecté
+        if (requireAuth()) {
+            initOneBlock();
+        }
+
+        // Configuration visuelle des emojis et classes CSS par type de bloc
+        const blockConfig = {
+            wood: { emoji: "🪵", css: "wood" },
+            stone: { emoji: "🪨", css: "stone" },
+            iron: { emoji: "⛓️", css: "iron" },
+            gold: { emoji: "🪙", css: "gold" },
+            diamond: { emoji: "💎", css: "diamond" },
+            netherite: { emoji: "🔥", css: "netherite" },
+            default: { emoji: "📦", css: "wood" }
+        };
+
+        const resourceIcons = {
+            wood: "🪵", stone: "🪨", iron: "🪙", gold: "👑", diamond: "💎", netherite: "🔥"
+        };
+
+        async function initOneBlock() {
+            // Charger la barre de nav globale
+            renderNav("oneblock"); // Note : Tu pourras rajouter l'onglet dans ui.js après
+            await loadNavUser();
+
+            // Récupérer l'état initial du One Bloc
+            await refreshState();
+
+            // Gérer le clic de minage
+            const clicker = document.getElementById("block-clicker");
+            clicker.addEventListener("click", handleMine);
+        }
+
+        async function refreshState() {
+            try {
+                const state = await api.getOneBlockState();
+                
+                // Mettre à jour la phase/stage
+                document.getElementById("current-stage").textContent = `Phase : ${state.current_stage} (Niveau ${state.level})`;
+                
+                // Configurer le visuel du bloc actuel
+                const visualBlock = document.getElementById("visual-block");
+                const currentType = state.next_block || "wood";
+                const config = blockConfig[currentType] || blockConfig.default;
+                
+                // Réinitialiser les classes et appliquer la bonne
+                visualBlock.className = "main-block";
+                visualBlock.classList.add(config.css);
+                visualBlock.textContent = config.emoji;
+
+                document.getElementById("next-material-hint").textContent = `Bloc actuel prêt à être miné : ${currentType.toUpperCase()}`;
+
+                // Afficher l'inventaire des ressources
+                renderResources(state.player_materials);
+
+            } catch (err) {
+                toast("Erreur lors de la récupération du One Bloc", "error");
+            }
+        }
+
+        async function handleMine() {
+            try {
+                const result = await api.mineOneBlock();
+                if (result.error) {
+                    toast(result.error, "error");
+                    return;
+                }
+
+                // Petit message sympa de succès
+                toast(`+1 ${result.mined_material.toUpperCase()} ! ⛏️`, "success");
+
+                // Rafraîchir l'état directement avec les nouvelles infos du serveur
+                await refreshState();
+            } catch (err) {
+                toast(err.message || "Impossible de miner", "error");
+            }
+        }
+
+        function renderResources(materials = {}) {
+            const container = document.getElementById("resources-display");
+            container.innerHTML = "";
+
+            // On s'assure qu'on affiche au moins les matériaux de base même si à 0
+            const keys = ["wood", "stone", "iron", "gold", "diamond", "netherite"];
+            
+            keys.forEach(key => {
+                const count = materials[key] || 0;
+                const icon = resourceIcons[key] || "📦";
+
+                const card = document.createElement("div");
+                card.className = "res-card";
+                card.innerHTML = `
+                    <span class="res-icon">${icon}</span>
+                    <span class="res-count">${fmt(count)}</span>
+                    <span class="res-label">${key}</span>
+                `;
+                container.appendChild(card);
+            });
+        }
+    </script>
+</body>
+</html>
