@@ -11,6 +11,7 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import jwt
 from functools import wraps
+import random as _random
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
@@ -19,6 +20,7 @@ CORS(app,
         "https://DragonKnYghT.github.io",
         "http://localhost:3000",
         "http://127.0.0.1:5500",
+        "http://127.0.0.1:5501", # Port alternatif Live Server souvent utilisé
     ],
     supports_credentials=True,
     allow_headers=["Content-Type", "Authorization"],
@@ -28,7 +30,7 @@ CORS(app,
 # ── MongoDB ──────────────────────────────────────────────────────────────────
 MONGO_URI = os.environ.get("MONGO_URI")
 client = MongoClient(MONGO_URI)
-db = client["vacances_bot"]             # ← même DB que le bot
+db = client["vacances_bot"]      # ← même DB que le bot
 
 # ── Discord OAuth2 ───────────────────────────────────────────────────────────
 DISCORD_CLIENT_ID     = os.environ.get("DISCORD_CLIENT_ID")
@@ -72,46 +74,50 @@ CLASSES = {
 WORLDS = {
     "monde_1": {"name": "La Forêt des Débuts", "required_nodes": [], "grid_size": 100},
     "monde_2": {"name": "Les Plaines de Feu",  "required_nodes": ["foret_complete"], "grid_size": 100},
-    "monde_3": {"name": "L'Océan Profond",     "required_nodes": ["plaines_complete"], "grid_size": 100},
+    "monde_3": {"name": "L'Océan Profond",      "required_nodes": ["plaines_complete"], "grid_size": 100},
     "monde_4": {"name": "Le Sommet des Dieux", "required_nodes": ["ocean_complete"], "grid_size": 100},
 }
 
 # ── Boutique ─────────────────────────────────────────────────────────────────
 SHOP_ITEMS = {
-    "pierre":  {"name": "Pierre 🪨",    "price": 10,  "category": "materiau"},
-    "bois":    {"name": "Bois 🪵",      "price": 8,   "category": "materiau"},
-    "fer":     {"name": "Fer ⚙️",       "price": 25,  "category": "materiau"},
-    "cristal": {"name": "Cristal 💎",   "price": 60,  "category": "materiau"},
-    "magie":   {"name": "Essence magique ✨", "price": 100, "category": "special"},
-    "pixel_1": {"name": "Pack Pixels ×10 🎨", "price": 50, "category": "pixel"},
+    "pierre":   {"name": "Pierre 🪨",    "price": 10,  "category": "materiau", "sell_price": 5},
+    "bois":     {"name": "Bois 🪵",      "price": 8,   "category": "materiau", "sell_price": 4},
+    "fer":      {"name": "Fer ⚙️",       "price": 25,  "category": "materiau", "sell_price": 12},
+    "cristal":  {"name": "Cristal 💎",   "price": 60,  "category": "materiau", "sell_price": 30},
+    "magie":    {"name": "Essence magique ✨", "price": 100, "category": "special", "sell_price": 50},
+    "pixel_1":  {"name": "Pack Pixels ×10 🎨", "price": 50, "category": "pixel"},
     "ticket_classe": {"name": "Ticket Classe 🎫", "price": 80, "category": "gacha"},
     "ticket_race":   {"name": "Ticket Race 🎟️",  "price": 80, "category": "gacha"},
     "ticket_duo":    {"name": "Duo Classe+Race 🎰","price": 140,"category": "gacha"},
 }
 
-# ── Skill tree ────────────────────────────────────────────────────────────────
-SKILL_TREE = {
+# ── Skill tree (L'Arbre Monde Réorganisé en 2 Arbres distincts) ─────────────────
+# 1. L'Arbre Monde (Amélioration de la Base globale)
+SKILL_TREE_BASE = {
     "salle_reunion": {
         "name": "Salle de réunion",
         "description": "Permet de lancer des votes serveur",
         "cost": {"pierre": 5, "bois": 3},
         "requires": [],
         "position": {"x": 400, "y": 50},
-        "unlocks": "monde_vote"
+        "unlocks": "monde_vote",
+        "trial": None
     },
     "forge": {
         "name": "La Forge",
-        "description": "Réduit le coût des matériaux de 10%",
+        "description": "Débloque la forge d'équipement (Disponible au Monde 2)",
         "cost": {"pierre": 10, "fer": 5},
         "requires": ["salle_reunion"],
         "position": {"x": 200, "y": 200},
+        "trial": "test_your_might" # Exige l'épreuve Test Your Might !
     },
     "bibliotheque": {
         "name": "Bibliothèque",
-        "description": "Bonus de +2pts sur les quiz",
+        "description": "Bonus de +2pts sur les quiz (Demande une épreuve de rythme)",
         "cost": {"bois": 15, "cristal": 2},
         "requires": ["salle_reunion"],
         "position": {"x": 600, "y": 200},
+        "trial": "osu_rhythm" # Exige l'épreuve OSU !
     },
     "foret_complete": {
         "name": "Maîtrise de la Forêt",
@@ -119,7 +125,8 @@ SKILL_TREE = {
         "cost": {"pierre": 20, "bois": 20, "fer": 10},
         "requires": ["forge", "bibliotheque"],
         "position": {"x": 400, "y": 350},
-        "unlocks": "monde_2"
+        "unlocks": "monde_2",
+        "trial": None
     },
     "plaines_complete": {
         "name": "Maîtrise des Plaines",
@@ -127,7 +134,8 @@ SKILL_TREE = {
         "cost": {"fer": 30, "cristal": 10, "magie": 2},
         "requires": ["foret_complete"],
         "position": {"x": 400, "y": 500},
-        "unlocks": "monde_3"
+        "unlocks": "monde_3",
+        "trial": None
     },
     "ocean_complete": {
         "name": "Maîtrise de l'Océan",
@@ -135,8 +143,56 @@ SKILL_TREE = {
         "cost": {"cristal": 30, "magie": 10},
         "requires": ["plaines_complete"],
         "position": {"x": 400, "y": 650},
-        "unlocks": "monde_4"
+        "unlocks": "monde_4",
+        "trial": None
     },
+}
+
+# 2. L'Arbre du Joueur (Améliorations de Statistiques Personnelles)
+SKILL_TREE_PLAYER = {
+    "clics_efficaces": {
+        "name": "Clics Efficaces",
+        "description": "+1 bloc brisé supplémentaire par clic sur le One Bloc",
+        "cost": {"bois": 10},
+        "requires": [],
+        "position": {"x": 200, "y": 50},
+        "trial": None
+    },
+    "chance_accrue": {
+        "name": "Chance Initiale",
+        "description": "+2% de chance globale sur les tirages du Gacha",
+        "cost": {"cristal": 5},
+        "requires": ["clics_efficaces"],
+        "position": {"x": 200, "y": 180},
+        "trial": "osu_rhythm"
+    },
+    "fureur_du_gardien": {
+        "name": "Fureur du Gardien",
+        "description": "+15% de dégâts contre les boss du serveur",
+        "cost": {"fer": 15, "magie": 1},
+        "requires": ["chance_accrue"],
+        "position": {"x": 400, "y": 300},
+        "trial": "test_your_might"
+    }
+}
+
+# Pour maintenir la rétrocompatibilité globale, on garde l'ancien pointeur combiné
+SKILL_TREE = {**SKILL_TREE_BASE, **SKILL_TREE_PLAYER}
+
+# ── Recettes de la Forge ─────────────────────────────────────────────────────
+FORGE_RECIPES = {
+    "wooden_pickaxe": {"name": "Pioche en Bois 🪵", "type": "tool", "cost": {"bois": 5}, "stat": 1, "desc": "Permet de casser le One Bloc."},
+    "wooden_sword": {"name": "Épée en Bois 🪵", "type": "weapon", "cost": {"bois": 8}, "stat": 10, "desc": "Une épée simple reçue à la fin du tutoriel."},
+    "iron_sword": {"name": "Épée en Fer ⚙️", "type": "weapon", "cost": {"fer": 12, "bois": 3}, "stat": 35, "desc": "Idéale pour entamer les combats de boss."},
+    "crystal_staff": {"name": "Bâton de Cristal 💎", "type": "weapon", "cost": {"cristal": 10, "magie": 3}, "stat": 80, "desc": "Déchaîne l'énergie de l'Arbre Monde."}
+}
+
+# ── Les Gardiens / Boss des Mondes ───────────────────────────────────────────
+BOSSES = {
+    "monde_1": {"id": "boss_1", "name": "Le Tronc Corrompu 🌲", "max_hp": 500, "reward_points": 200},
+    "monde_2": {"id": "boss_2", "name": "L'Esprit des Cendres 🔥", "max_hp": 2500, "reward_points": 500},
+    "monde_3": {"id": "boss_3", "name": "Le Léviathan Saturé 🌊", "max_hp": 10000, "reward_points": 1200},
+    "monde_4": {"id": "boss_4", "name": "Le Gardien Primordial ⛰️", "max_hp": 50000, "reward_points": 3000},
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -176,50 +232,62 @@ def require_auth(f):
     return decorated
 
 def get_user_doc(user_id: str) -> dict:
-    """Récupère ou crée le document utilisateur dans MongoDB avec sécurité Gacha et Mondes."""
+    """Récupère ou crée le document utilisateur dans MongoDB avec toutes les structures RPG."""
     doc = db.users.find_one({"user_id": user_id})
+    
+    # Valeurs par défaut du système RPG à injecter si absentes
+    default_rpg_fields = {
+        "user_id": user_id,
+        "points": 0,
+        "vocal_points": 0,
+        "message_points": 0,
+        "activity_points": 0,
+        "minigame_points": 0,
+        "spent_points": 0,
+        "classe": None,
+        "race": None,
+        "tickets_classe": 0,
+        "tickets_race": 0,
+        "classe_history": [],
+        "race_history": [],
+        "materials": {"bois": 0, "pierre": 0, "fer": 0, "cristal": 0, "magie": 0},
+        "pixels_remaining": 0,
+        "unlocked_worlds": ["monde_1"],
+        "unlocked_nodes": [],
+        "completed_trials": [],       # Épreuves de l'arbre réussies
+        "tutorial_progress": "START",  # Suivi histoire : START, ONE_BLOC_INTRO, EQUIP_SWORD, DONE
+        "one_block": {"phase": 1, "broken": 0, "next": "bois"},
+        "inventory": [],               # Contient les dictionnaires d'équipements possédés
+        "gacha_pity": {"total_pulls": 0, "current_step": 0, "bonus_chance": 0.0},
+        "boss_progress": {"boss_1": 500, "boss_2": 2500, "boss_3": 10000, "boss_4": 50000}, # Vie restante
+        "created_at": datetime.utcnow()
+    }
+
     if not doc:
-        doc = {
-            "user_id": user_id,
-            "points": 0,
-            "vocal_points": 0,
-            "message_points": 0,
-            "activity_points": 0,
-            "minigame_points": 0,
-            "classe": None,
-            "race": None,
-            "tickets_classe": 0,
-            "tickets_race": 0,
-            "classe_history": [],
-            "race_history": [],
-            "materials": {},
-            "pixels_remaining": 0,
-            "unlocked_worlds": ["monde_1"],  # Ajout d'office pour les nouveaux
-            "unlocked_nodes": [],
-            "created_at": datetime.utcnow()
-        }
+        doc = default_rpg_fields
         db.users.insert_one(doc)
     else:
-        # Sécurité pour les anciens comptes : on s'assure que les listes et tickets existent
+        # Sécurité & initialisation des nouveaux champs RPG sur les comptes existants
         updates = {}
-        if "tickets_classe" not in doc:
-            doc["tickets_classe"] = 0
-            updates["tickets_classe"] = 0
-        if "tickets_race" not in doc:
-            doc["tickets_race"] = 0
-            updates["tickets_race"] = 0
-        if "race" not in doc:
-            doc["race"] = None
-            updates["race"] = None
-            
-        # 🟢 CORRECTIF : Si la liste n'existe pas ou ne contient pas monde_1, on répare !
-        unlocked_worlds = doc.get("unlocked_worlds", [])
-        if not unlocked_worlds or "monde_1" not in unlocked_worlds:
-            if "monde_1" not in unlocked_worlds:
-                unlocked_worlds.insert(0, "monde_1")
-            doc["unlocked_worlds"] = unlocked_worlds
-            updates["unlocked_worlds"] = unlocked_worlds
+        for key, value in default_rpg_fields.items():
+            if key not in doc:
+                doc[key] = value
+                updates[key] = value
         
+        # Double sécurité pour les sous-dictionnaires
+        if "materials" in doc and not isinstance(doc["materials"], dict):
+            doc["materials"] = default_rpg_fields["materials"]
+            updates["materials"] = default_rpg_fields["materials"]
+        if "one_block" not in doc or not isinstance(doc["one_block"], dict):
+            doc["one_block"] = default_rpg_fields["one_block"]
+            updates["one_block"] = default_rpg_fields["one_block"]
+        if "gacha_pity" not in doc or not isinstance(doc["gacha_pity"], dict):
+            doc["gacha_pity"] = default_rpg_fields["gacha_pity"]
+            updates["gacha_pity"] = default_rpg_fields["gacha_pity"]
+        if "boss_progress" not in doc or not isinstance(doc["boss_progress"], dict):
+            doc["boss_progress"] = default_rpg_fields["boss_progress"]
+            updates["boss_progress"] = default_rpg_fields["boss_progress"]
+
         if updates:
             db.users.update_one({"user_id": user_id}, {"$set": updates})
             
@@ -227,13 +295,10 @@ def get_user_doc(user_id: str) -> dict:
 
 def apply_class_discount(user_doc: dict, item_key: str, base_price: int) -> int:
     user_classe = user_doc.get("classe")
-    if not user_classe:
+    if not user_classe or user_classe == "Aucune":
         return base_price
 
-    # On cherche la classe de l'utilisateur dans la liste du Gacha pour obtenir ses vrais bonus
     classe_meta = next((c for c in GACHA_CLASSES if c["id"] == user_classe), None)
-    
-    # Si pas trouvé dans le Gacha, on cherche dans l'ancien dictionnaire de secours
     if not classe_meta:
         classe_meta = CLASSES.get(user_classe)
 
@@ -241,13 +306,10 @@ def apply_class_discount(user_doc: dict, item_key: str, base_price: int) -> int:
         return base_price
 
     item = SHOP_ITEMS.get(item_key, {})
-    
-    # Gestion du coût des pixels
     if item.get("category") == "pixel":
         pixel_cost_multiplier = classe_meta.get("pixel_cost", 1.0)
         return int(base_price * pixel_cost_multiplier)
 
-    # Gestion des réductions de la boutique
     discount = classe_meta.get("shop_discount", 0.0)
     return int(base_price * (1 - discount))
 
@@ -257,7 +319,6 @@ def apply_class_discount(user_doc: dict, item_key: str, base_price: int) -> int:
 
 @app.route("/auth/login")
 def auth_login():
-    """Redirige vers Discord pour l'autorisation."""
     params = {
         "client_id": DISCORD_CLIENT_ID,
         "redirect_uri": DISCORD_REDIRECT_URI,
@@ -269,12 +330,10 @@ def auth_login():
 
 @app.route("/auth/callback")
 def auth_callback():
-    """Discord redirige ici avec un code. On l'échange contre un token."""
     code = request.args.get("code")
     if not code:
         return jsonify({"error": "Code manquant"}), 400
 
-    # Échange du code contre un access token Discord
     token_resp = requests.post(
         f"{DISCORD_API_BASE}/oauth2/token",
         data={
@@ -291,7 +350,6 @@ def auth_callback():
 
     discord_token = token_resp.json()["access_token"]
 
-    # Récupère l'utilisateur Discord
     user_resp = requests.get(
         f"{DISCORD_API_BASE}/users/@me",
         headers={"Authorization": f"Bearer {discord_token}"},
@@ -302,7 +360,6 @@ def auth_callback():
     discord_user = user_resp.json()
     user_id = discord_user["id"]
 
-    # Crée/met à jour en base
     db.users.update_one(
         {"user_id": user_id},
         {"$set": {
@@ -313,17 +370,15 @@ def auth_callback():
         }},
         upsert=True
     )
-    get_user_doc(user_id)  # s'assure que tous les champs existent
+    get_user_doc(user_id)
 
-    # Génère un JWT et redirige vers le site
     token = make_jwt(user_id, discord_token)
-    site_url = os.environ.get("SITE_URL", "https://TON_USERNAME.github.io/vacances-bot")
+    site_url = os.environ.get("SITE_URL", "https://DragonKnYghT.github.io/vacances-bot")
     return redirect(f"{site_url}/callback.html?token={token}")
 
 @app.route("/auth/me")
 @require_auth
 def auth_me():
-    """Renvoie les infos Discord de l'utilisateur connecté."""
     resp = requests.get(
         f"{DISCORD_API_BASE}/users/@me",
         headers={"Authorization": f"Bearer {request.discord_token}"},
@@ -338,7 +393,7 @@ def auth_logout():
     return jsonify({"ok": True})
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Routes Profil
+# Routes Profil & Progression Histoire
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.route("/api/profile")
@@ -347,20 +402,18 @@ def get_profile():
     doc = get_user_doc(request.user_id)
     doc.pop("_id", None)
 
-    # Calcul du solde actuel (uniquement messages + vocal)
     vocal = doc.get("vocal_points", 0)
     messages = doc.get("message_points", 0)
-    doc["total_points"] = vocal + messages
+    minigames = doc.get("minigame_points", 0)
+    activity = doc.get("activity_points", 0)
     
-    # On force la présence de la race et de la classe
+    doc["total_points"] = vocal + messages + minigames + activity
     doc["classe"] = doc.get("classe", "Aucune")
     doc["race"] = doc.get("race", "Aucune")
 
-    # 🟢 CORRECTIF : Double-sécurité d'affichage pour le front-end
     if "monde_1" not in doc.get("unlocked_worlds", []):
         doc["unlocked_worlds"] = ["monde_1"] + doc.get("unlocked_worlds", [])
 
-    # Calcul du rang basé sur les points cumulés historiques
     pipeline = [
         {"$addFields": {"total_cumule": {"$add": [
             {"$ifNull": ["$vocal_points_cumules", {"$ifNull": ["$vocal_points", 0]}]},
@@ -377,8 +430,105 @@ def get_profile():
 
     return jsonify(doc)
 
+@app.route("/api/story/tutorial/progress", methods=["POST"])
+@require_auth
+def advance_tutorial():
+    """Fait progresser l'état du tutoriel de l'histoire et offre les récompenses."""
+    data = request.get_json()
+    next_step = data.get("step") # 'ONE_BLOC_INTRO', 'EQUIP_SWORD', 'DONE'
+    
+    doc = get_user_doc(request.user_id)
+    
+    if next_step == "DONE" and doc.get("tutorial_progress") != "DONE":
+        # Fin de tuto, on offre l'Épée en bois 🪵 demandée dans le lore
+        wooden_sword = {
+            "id": "wooden_sword_" + str(int(datetime.utcnow().timestamp())),
+            "item_id": "wooden_sword",
+            "name": "Épée en Bois 🪵",
+            "type": "weapon",
+            "stat": 10,
+            "equipped": False
+        }
+        db.users.update_one(
+            {"user_id": request.user_id},
+            {
+                "$set": {"tutorial_progress": "DONE"},
+                "$push": {"inventory": wooden_sword}
+            }
+        )
+        return jsonify({"ok": True, "step": "DONE", "reward": "wooden_sword"})
+
+    db.users.update_one({"user_id": request.user_id}, {"$set": {"tutorial_progress": next_step}})
+    return jsonify({"ok": True, "step": next_step})
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Routes Boutique
+# Routes One Bloc (Système de phases et farm)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/oneblock/mine", methods=["POST"])
+@require_auth
+def mine_one_block():
+    """Gère le clic de cassage de bloc, requiert la pioche en bois équipée au début."""
+    doc = get_user_doc(request.user_id)
+    
+    # Vérification de l'outil équipé (Tuto force à équiper la pioche en bois)
+    has_pickaxe = any(item for item in doc.get("inventory", []) if item.get("item_id") == "wooden_pickaxe" and item.get("equipped") is True)
+    
+    # Bypass de sécurité uniquement si le joueur est en plein tutoriel
+    if not has_pickaxe and doc.get("tutorial_progress") == "DONE":
+        return jsonify({"error": "Tu dois forger et équiper une Pioche en Bois pour miner le One Bloc !"}), 400
+
+    one_block_data = doc.get("one_block", {"phase": 1, "broken": 0, "next": "bois"})
+    
+    # Calcul des bonus de clic via l'arbre du joueur
+    click_power = 1
+    if "clics_efficaces" in doc.get("unlocked_nodes", []):
+        click_power += 1
+
+    current_broken = one_block_data.get("broken", 0) + click_power
+    current_phase = one_block_data.get("phase", 1)
+    
+    # Détermination du matériau gagné selon la phase
+    materials_pool = ["bois"]
+    if current_phase >= 2: materials_pool.append("pierre")
+    if current_phase >= 3: materials_pool.append("fer")
+    if current_phase >= 4: materials_pool.extend(["cristal", "magie"])
+    
+    gained_mat = _random.choice(materials_pool)
+    
+    # Changement de phase tous les 100 blocs cassés
+    next_phase = current_phase
+    if current_broken >= current_phase * 100:
+        next_phase += 1
+        current_broken = 0
+
+    # Prochain bloc à afficher visuellement
+    next_mat_visual = _random.choice(materials_pool)
+
+    # Mise à jour MongoDB
+    db.users.update_one(
+        {"user_id": request.user_id},
+        {
+            "$set": {
+                "one_block.broken": current_broken,
+                "one_block.phase": next_phase,
+                "one_block.next": next_mat_visual
+            },
+            "$inc": {f"materials.{gained_mat}": 1}
+        }
+    )
+
+    return jsonify({
+        "ok": True,
+        "gained": gained_mat,
+        "broken": current_broken,
+        "phase": next_phase,
+        "next_block": next_mat_visual,
+        "phase_needed": next_phase * 100
+    })
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes Boutique & Marchand (Achat + Vente de ressources)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.route("/api/shop")
@@ -401,9 +551,10 @@ def get_shop():
             "base_price": item["price"],
             "price": discounted,
             "category": item["category"],
+            "sell_price": item.get("sell_price", 0), # Ajout pour l'interface de vente du Marchand
             "discounted": discounted < item["price"],
         })
-    return jsonify({"items": items, "user_points": available})
+    return jsonify({"items": items, "user_points": available, "materials": doc.get("materials", {})})
 
 @app.route("/api/shop/buy", methods=["POST"])
 @require_auth
@@ -429,11 +580,7 @@ def buy_item():
         return jsonify({"error": "Pas assez de points"}), 400
 
     mat_field = f"materials.{item_key}"
-    
-    # Préparation propre des dictionnaires MongoDB pour éviter les KeyError en Python
-    update = {
-        "$inc": {"spent_points": price}
-    }
+    update = {"$inc": {"spent_points": price}}
 
     if item_key not in ("pixel_1", "ticket_classe", "ticket_race", "ticket_duo"):
         update["$inc"][mat_field] = qty
@@ -451,8 +598,124 @@ def buy_item():
 
     db.users.update_one({"user_id": request.user_id}, update)
     return jsonify({"ok": True, "spent": price, "remaining_points": available - price})
+
+@app.route("/api/merchant/sell", methods=["POST"])
+@require_auth
+def sell_item():
+    """Le Marchand : Deuxième page de la boutique pour vendre ses ressources contre des Coins."""
+    data = request.get_json()
+    item_key = data.get("item")
+    qty = int(data.get("quantity", 1))
+
+    if item_key not in SHOP_ITEMS or "sell_price" not in SHOP_ITEMS[item_key]:
+        return jsonify({"error": "Cet article ne peut pas être vendu."}), 400
+
+    doc = get_user_doc(request.user_id)
+    user_mats = doc.get("materials", {})
+    
+    if user_mats.get(item_key, 0) < qty:
+        return jsonify({"error": f"Tu n'as pas assez de {item_key} à vendre."}), 400
+
+    earnings = SHOP_ITEMS[item_key]["sell_price"] * qty
+
+    # Vendre déduit les matériaux et réduit le "spent_points" pour regagner du solde disponible
+    db.users.update_one(
+        {"user_id": request.user_id},
+        {
+            "$inc": {
+                f"materials.{item_key}": -qty,
+                "spent_points": -earnings # Réduire les dépenses revient à donner du budget !
+            }
+        }
+    )
+    return jsonify({"ok": True, "earned": earnings})
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Routes Skill Tree
+# Routes Inventaire & La Forge (Déblocable monde 2 via l'arbre)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/inventory")
+@require_auth
+def get_inventory():
+    doc = get_user_doc(request.user_id)
+    return jsonify({
+        "inventory": doc.get("inventory", []),
+        "forge_unlocked": "forge" in doc.get("unlocked_nodes", []),
+        "current_world": doc.get("unlocked_worlds", ["monde_1"])[-1]
+    })
+
+@app.route("/api/forge/craft", methods=["POST"])
+@require_auth
+def forge_craft():
+    """Permet de fabriquer des outils/armes. Disponible uniquement si validé dans l'arbre au Monde 2."""
+    doc = get_user_doc(request.user_id)
+    data = request.get_json()
+    recipe_key = data.get("recipe")
+
+    if "forge" not in doc.get("unlocked_nodes", []):
+        return jsonify({"error": "🔒 Tu dois d'abord débloquer La Forge dans l'Arbre Monde !"}), 403
+    
+    if "monde_2" not in doc.get("unlocked_worlds", []):
+        return jsonify({"error": "🔒 La Forge n'est accessible qu'à partir du Monde 2 (Plaines de Feu)."}), 403
+
+    if recipe_key not in FORGE_RECIPES:
+        return jsonify({"error": "Recette introuvable."}), 404
+
+    recipe = FORGE_RECIPES[recipe_key]
+    user_mats = doc.get("materials", {})
+
+    # Vérification des ressources
+    for mat, qty in recipe["cost"].items():
+        if user_mats.get(mat, 0) < qty:
+            return jsonify({"error": f"Matériaux insuffisants pour forger cet équipement ({mat} manquant)."}), 400
+
+    # Retrait des ressources et ajout de l'item généré
+    inc_costs = {f"materials.{mat}": -qty for mat, qty in recipe["cost"].items()}
+    new_item = {
+        "id": f"{recipe_key}_{int(datetime.utcnow().timestamp())}",
+        "item_id": recipe_key,
+        "name": recipe["name"],
+        "type": recipe["type"],
+        "stat": recipe["stat"],
+        "equipped": False
+    }
+
+    db.users.update_one(
+        {"user_id": request.user_id},
+        {
+            "$inc": inc_costs,
+            "$push": {"inventory": new_item}
+        }
+    )
+    return jsonify({"ok": True, "item": new_item})
+
+@app.route("/api/inventory/equip", methods=["POST"])
+@require_auth
+def equip_item():
+    """Équipe un objet et déséquipe automatiquement l'ancien du même type."""
+    data = request.get_json()
+    unique_id = data.get("id")
+    
+    doc = get_user_doc(request.user_id)
+    inventory = doc.get("inventory", [])
+    
+    item_to_equip = next((item for item in inventory if item["id"] == unique_id), None)
+    if not item_to_equip:
+        return jsonify({"error": "Objet introuvable dans ton inventaire."}), 404
+
+    # Déséquiper tous les objets du même type (ex: autres armes)
+    for item in inventory:
+        if item["type"] == item_to_equip["type"]:
+            item["equipped"] = False
+            
+    # Équiper le nouvel objet
+    item_to_equip["equipped"] = True
+
+    db.users.update_one({"user_id": request.user_id}, {"$set": {"inventory": inventory}})
+    return jsonify({"ok": True, "inventory": inventory})
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes Skill Tree (Avec système d'épreuves Rythme OSU & Test Your Might)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.route("/api/skilltree")
@@ -461,15 +724,16 @@ def get_skilltree():
     doc = get_user_doc(request.user_id)
     unlocked = doc.get("unlocked_nodes", [])
     materials = doc.get("materials", {})
+    completed_trials = doc.get("completed_trials", [])
 
-    nodes = []
-    for key, node in SKILL_TREE.items():
+    # Arbre Monde (Base)
+    base_nodes = []
+    for key, node in SKILL_TREE_BASE.items():
         can_unlock = all(r in unlocked for r in node["requires"])
-        affordable = all(
-            materials.get(mat, 0) >= qty
-            for mat, qty in node["cost"].items()
-        )
-        nodes.append({
+        affordable = all(materials.get(mat, 0) >= qty for mat, qty in node["cost"].items())
+        trial_done = node["trial"] is None or key in completed_trials
+        
+        base_nodes.append({
             "id": key,
             "name": node["name"],
             "description": node["description"],
@@ -479,10 +743,55 @@ def get_skilltree():
             "unlocked": key in unlocked,
             "can_unlock": can_unlock and key not in unlocked,
             "affordable": affordable and can_unlock and key not in unlocked,
+            "trial_required": node["trial"],
+            "trial_passed": trial_done,
             "unlocks": node.get("unlocks"),
         })
 
-    return jsonify({"nodes": nodes, "unlocked": unlocked, "materials": materials})
+    # Arbre du Joueur
+    player_nodes = []
+    for key, node in SKILL_TREE_PLAYER.items():
+        can_unlock = all(r in unlocked for r in node["requires"])
+        affordable = all(materials.get(mat, 0) >= qty for mat, qty in node["cost"].items())
+        trial_done = node["trial"] is None or key in completed_trials
+
+        player_nodes.append({
+            "id": key,
+            "name": node["name"],
+            "description": node["description"],
+            "cost": node["cost"],
+            "requires": node["requires"],
+            "position": node["position"],
+            "unlocked": key in unlocked,
+            "can_unlock": can_unlock and key not in unlocked,
+            "affordable": affordable and can_unlock and key not in unlocked,
+            "trial_required": node["trial"],
+            "trial_passed": trial_done,
+        })
+
+    return jsonify({
+        "base_tree": base_nodes, 
+        "player_tree": player_nodes, 
+        "unlocked": unlocked, 
+        "materials": materials
+    })
+
+@app.route("/api/skilltree/trial/complete", methods=["POST"])
+@require_auth
+def complete_node_trial():
+    """Appelé par le front-end quand le joueur réussit le mini-jeu (OSU ou Test Your Might)."""
+    data = request.get_json()
+    node_key = data.get("node")
+    success = data.get("success", False)
+
+    if not success:
+        return jsonify({"error": "Épreuve échouée, réessaye ! 💥"}), 400
+
+    db.users.update_one(
+        {"user_id": request.user_id},
+        {"$addToSet": {"completed_trials": node_key}}
+    )
+    return jsonify({"ok": True, "message": "Épreuve validée avec succès ! 🎉"})
 
 @app.route("/api/skilltree/unlock", methods=["POST"])
 @require_auth
@@ -494,23 +803,24 @@ def unlock_node():
         return jsonify({"error": "Nœud inconnu"}), 404
 
     node = SKILL_TREE[node_key]
-    doc = get_user_doc(request.user_id) # Appel direct qui va mettre à jour/réparer le profil si nécessaire
+    doc = get_user_doc(request.user_id)
     unlocked = doc.get("unlocked_nodes", [])
     materials = doc.get("materials", {})
+    completed_trials = doc.get("completed_trials", [])
 
     if node_key in unlocked:
         return jsonify({"error": "Déjà débloqué"}), 400
     if not all(r in unlocked for r in node["requires"]):
         return jsonify({"error": "Prérequis manquants"}), 400
+    if node.get("trial") and node_key not in completed_trials:
+        return jsonify({"error": "Tu dois réussir l'épreuve de ce nœud avant !"}), 400
     for mat, qty in node["cost"].items():
         if materials.get(mat, 0) < qty:
             return jsonify({"error": f"Pas assez de {mat}"}), 400
 
-    # Déduire les matériaux
     inc = {f"materials.{mat}": -qty for mat, qty in node["cost"].items()}
     inc_update = {"$inc": inc, "$push": {"unlocked_nodes": node_key}}
 
-    # Déverrouille un monde si applicable
     if "unlocks" in node:
         inc_update["$addToSet"] = {"unlocked_worlds": node["unlocks"]}
 
@@ -518,7 +828,7 @@ def unlock_node():
     return jsonify({"ok": True, "unlocked": node_key, "new_world": node.get("unlocks")})
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Routes Pixel Map
+# Routes Pixel Map & Invitation de Pixels aux autres joueurs
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.route("/api/pixelmap/<world_id>")
@@ -531,7 +841,6 @@ def get_pixelmap(world_id):
     if world_id not in doc.get("unlocked_worlds", ["monde_1"]):
         return jsonify({"error": "Monde verrouillé"}), 403
 
-    # Récupère tous les pixels de ce monde
     pixels = list(db.pixels.find(
         {"world": world_id},
         {"_id": 0, "x": 1, "y": 1, "color": 1, "placed_by": 1, "placed_at": 1}
@@ -580,8 +889,36 @@ def place_pixel(world_id):
 
     return jsonify({"ok": True, "pixels_remaining": pixels_left - 1})
 
+@app.route("/api/pixel/invite", methods=["POST"])
+@require_auth
+def invite_to_pixel_zone():
+    """Système d'invitation au pixel : Permet d'envoyer une notification/coordonnée à un autre joueur."""
+    data = request.get_json()
+    target_username = data.get("target_username")
+    world_id = data.get("world_id")
+    x = data.get("x")
+    y = data.get("y")
+
+    target_user = db.users.find_one({"username": target_username})
+    if not target_user:
+        return jsonify({"error": "Joueur introuvable sur le serveur."}), 404
+
+    # Enregistrement de l'invitation pour le destinataire
+    invitation = {
+        "from": doc.get("username", "Un Gardien"),
+        "world_id": world_id,
+        "coords": f"[{x}, {y}]",
+        "timestamp": datetime.utcnow()
+    }
+    
+    db.users.update_one(
+        {"user_id": target_user["user_id"]},
+        {"$push": {"pixel_invitations": invitation}}
+    )
+    return jsonify({"ok": True, "message": f"Invitation envoyée à {target_username} !"})
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Routes Classes
+# Routes Classes & Choix Originel
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.route("/api/classes")
@@ -598,7 +935,7 @@ def choose_class():
         return jsonify({"error": "Classe inconnue"}), 404
 
     doc = get_user_doc(request.user_id)
-    if doc.get("classe"):
+    if doc.get("classe") and doc.get("classe") != "Aucune":
         return jsonify({"error": "Tu as déjà choisi une classe"}), 400
 
     db.users.update_one(
@@ -608,12 +945,155 @@ def choose_class():
     return jsonify({"ok": True, "classe": classe})
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Routes Combat de Boss (Les Gardiens corrompus de l'Arbre)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/boss/status")
+@require_auth
+def get_boss_status():
+    doc = get_user_doc(request.user_id)
+    current_world = doc.get("unlocked_worlds", ["monde_1"])[-1]
+    
+    if current_world not in BOSSES:
+        return jsonify({"error": "Aucun boss dans cette zone"}), 400
+        
+    boss_info = BOSSES[current_world]
+    progress = doc.get("boss_progress", {})
+    current_hp = progress.get(boss_info["id"], boss_info["max_hp"])
+    
+    return jsonify({
+        "boss": boss_info,
+        "current_hp": current_hp,
+        "is_dead": current_hp <= 0
+    })
+
+@app.route("/api/boss/attack", methods=["POST"])
+@require_auth
+def attack_boss():
+    """Attaque le boss du monde actuel en utilisant la puissance de l'arme équipée."""
+    doc = get_user_doc(request.user_id)
+    current_world = doc.get("unlocked_worlds", ["monde_1"])[-1]
+    
+    if current_world not in BOSSES:
+        return jsonify({"error": "Pas de boss ici"}), 400
+        
+    boss_info = BOSSES[current_world]
+    boss_id = boss_info["id"]
+    current_hp = doc.get("boss_progress", {}).get(boss_id, boss_info["max_hp"])
+    
+    if current_hp <= 0:
+        return jsonify({"error": "Ce Gardien est déjà purifié/vaincu pour ce monde !"}), 400
+
+    # Recherche des dégâts de l'arme équipée
+    equipped_weapon = next((item for item in doc.get("inventory", []) if item.get("type") == "weapon" and item.get("equipped") is True), None)
+    base_damage = equipped_weapon["stat"] if equipped_weapon else 2 # Mains nues = 2 dégâts
+    
+    # Bonus de l'arbre joueur
+    if "fureur_du_gardien" in doc.get("unlocked_nodes", []):
+        base_damage = int(base_damage * 1.15)
+
+    new_hp = max(0, current_hp - base_damage)
+    
+    update_query = {"$set": {f"boss_progress.{boss_id}": new_hp}}
+    
+    # Si le boss meurt, on distribue sa récompense de points d'activité
+    if new_hp == 0:
+        update_query["$inc"] = {"activity_points": boss_info["reward_points"]}
+
+    db.users.update_one({"user_id": request.user_id}, update_query)
+    
+    return jsonify({
+        "ok": True,
+        "damage_dealt": base_damage,
+        "new_hp": new_hp,
+        "boss_defeated": new_hp == 0,
+        "reward": boss_info["reward_points"] if new_hp == 0 else 0
+    })
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes Gacha & Système de Pitié (10 étapes — 200 tirages max)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/gacha/pity/status")
+@require_auth
+def get_pity_status():
+    doc = get_user_doc(request.user_id)
+    return jsonify({"pity": doc.get("gacha_pity")})
+
+@app.route("/api/gacha/pull", methods=["POST"])
+@require_auth
+def pull_gacha():
+    """Gère un tirage avec l'augmentation par étape de 5% de pitié tous les 20 tirages."""
+    data = request.get_json()
+    pull_type = data.get("type") # "classe" ou "race"
+    
+    doc = get_user_doc(request.user_id)
+    ticket_field = f"tickets_{pull_type}"
+    
+    if doc.get(ticket_field, 0) < 1:
+        return jsonify({"error": f"Tu n'as pas de Ticket {pull_type.capitalize()} ! Accède au Shop."}), 400
+
+    pity_data = doc.get("gacha_pity", {"total_pulls": 0, "current_step": 0, "bonus_chance": 0.0})
+    total_pulls = pity_data.get("total_pulls", 0) + 1
+    
+    # Calcul de l'étape de pitié (Tous les 20 tirages, on monte de 5% de chance)
+    current_step = total_pulls // 20
+    if current_step > 10: current_step = 10
+    bonus_chance = current_step * 5.0 # Max +50% de chance au bout des 10 étapes (200 tirages)
+
+    # Base de chance : Légendaire = 3% + bonus de pitié
+    roll = _random.uniform(0, 100)
+    legendary_threshold = 3.0 + bonus_chance
+    
+    pool = GACHA_CLASSES if pull_type == "classe" else GACHA_RACES
+    
+    # Détermination de la rareté obtenue
+    if roll <= legendary_threshold:
+        gained_rarity = "legendaire"
+        # Reset de la pitié suite à l'obtention d'un légendaire
+        total_pulls = 0
+        current_step = 0
+        bonus_chance = 0.0
+    elif roll <= legendary_threshold + 12:
+        gained_rarity = "epique"
+    elif roll <= legendary_threshold + 12 + 30:
+        gained_rarity = "rare"
+    else:
+        gained_rarity = "commun"
+
+    # Filtrer les entités de cette rareté
+    available_rewards = [item for item in pool if item["rarity"] == gained_rarity]
+    reward = _random.choice(available_rewards)
+
+    # Sauvegarde du choix en base
+    update_set = {
+        pull_type: reward["name"],
+        "gacha_pity.total_pulls": total_pulls,
+        "gacha_pity.current_step": current_step,
+        "gacha_pity.bonus_chance": bonus_chance
+    }
+    
+    db.users.update_one(
+        {"user_id": request.user_id},
+        {
+            "$set": update_set,
+            "$inc": {ticket_field: -1},
+            "$push": {f"{pull_type}_history": reward["name"]}
+        }
+    )
+
+    return jsonify({
+        "ok": True,
+        "reward": reward,
+        "pity": {"total_pulls": total_pulls, "current_step": current_step, "bonus_chance": bonus_chance}
+    })
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Routes Classement
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.route("/api/leaderboard", methods=["GET"])
 def get_leaderboard():
-    # Filtre strict : Uniquement des identifiants Discord numériques réels
     users = list(db.users.find({
         "user_id": {"$regex": "^[0-9]+$"},
         "username": {"$ne": "Joueur Anonyme"}
@@ -621,7 +1101,6 @@ def get_leaderboard():
     
     leaderboard = []
     for u in users:
-        # Système de cumul historique (ne baisse pas quand on achète)
         vocal_cumule = u.get("vocal_points_cumules", u.get("vocal_points", 0))
         messages_cumule = u.get("message_points_cumules", u.get("message_points", 0))
         total_historique = vocal_cumule + messages_cumule
@@ -631,21 +1110,16 @@ def get_leaderboard():
             "username": u.get("username", "Joueur"),
             "avatar": u.get("avatar") or None,
             "classe": u.get("classe", "Aucune"),
-            "race": u.get("race", "Aucune"), # Ajout de la race
-            "total_points": total_historique, # Points cumulés pour le classement
+            "race": u.get("race", "Aucune"),
+            "total_points": total_historique,
             "details": {
                 "vocal": u.get("vocal_points", 0),
                 "messages": u.get("message_points", 0)
             }
         })
         
-    # Tri par points historiques cumulés décroissants
     leaderboard.sort(key=lambda x: x["total_points"], reverse=True)
     return jsonify(leaderboard[:10])
-# ─────────────────────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes Codes Promo
@@ -680,16 +1154,13 @@ def redeem_code():
 
     uid = request.user_id
 
-    # Déjà utilisé par ce joueur
     if uid in code_doc.get("used_by", []):
         return jsonify({"error": "Tu as déjà utilisé ce code 😅"}), 400
 
-    # Limite globale
     total_max = code_doc.get("total_max")
     if total_max is not None and code_doc.get("total_used", 0) >= total_max:
         return jsonify({"error": "Ce code a atteint sa limite d'utilisations 😢"}), 400
 
-    # Applique les récompenses
     rewards = code_doc.get("rewards", {})
     if not rewards:
         return jsonify({"error": "Code sans récompenses"}), 400
@@ -713,7 +1184,6 @@ def redeem_code():
         rewards_display.append(f"+{amount} {label}")
 
     return jsonify({"ok": True, "rewards": rewards_display})
-
 
 @app.route("/api/codes/check", methods=["POST"])
 @require_auth
@@ -745,10 +1215,8 @@ def check_code():
     })
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GACHA — Classes & Races
+# GACHA — Les Configurations de Rareté & Objets de collection
 # ─────────────────────────────────────────────────────────────────────────────
-
-import random as _random
 
 RARITIES = {
     "commun":    {"label": "Commun",    "color": "#7a7f9a", "chance": 55},
@@ -758,237 +1226,42 @@ RARITIES = {
 }
 
 GACHA_CLASSES = [
-    # Communs
     {"id":"soldat",      "name":"Soldat ⚔️",        "rarity":"commun",    "bonus":"Résistance +10% dégâts","upgrade_discount":0.05,"shop_discount":0.0,"pixel_cost":1.0},
     {"id":"paysan",      "name":"Paysan 🌾",         "rarity":"commun",    "bonus":"Matériaux +5% à la récolte","upgrade_discount":0.0,"shop_discount":0.05,"pixel_cost":1.0},
     {"id":"marchand",    "name":"Marchand 💰",       "rarity":"commun",    "bonus":"-20% en boutique","upgrade_discount":0.0,"shop_discount":0.20,"pixel_cost":1.0},
     {"id":"eclaireur",   "name":"Éclaireur 🗺️",     "rarity":"commun",    "bonus":"Maps débloquées +vite","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":1.0,"map_discount":0.15},
-    # Rares
     {"id":"guerrier",    "name":"Guerrier 🛡️",      "rarity":"rare",      "bonus":"-15% améliorations","upgrade_discount":0.15,"shop_discount":0.0,"pixel_cost":1.0},
     {"id":"architecte",  "name":"Architecte 🏗️",   "rarity":"rare",      "bonus":"Pixels à moitié prix","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":0.5},
     {"id":"alchimiste",  "name":"Alchimiste ⚗️",    "rarity":"rare",      "bonus":"-20% matériaux spéciaux","upgrade_discount":0.0,"shop_discount":0.15,"pixel_cost":1.0},
     {"id":"barde",       "name":"Barde 🎵",          "rarity":"rare",      "bonus":"+2pts par activité","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":1.0,"activity_bonus":2},
-    # Épiques
     {"id":"mage",        "name":"Mage 🔮",           "rarity":"epique",    "bonus":"-10% boutique + bonus quiz","upgrade_discount":0.0,"shop_discount":0.10,"pixel_cost":1.0,"activity_bonus":3},
     {"id":"paladin",     "name":"Paladin ✨",        "rarity":"epique",    "bonus":"-20% améliorations + résistance","upgrade_discount":0.20,"shop_discount":0.0,"pixel_cost":1.0},
     {"id":"ninja",       "name":"Ninja 🥷",          "rarity":"epique",    "bonus":"Pixels ×3 par achat","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":0.33,"pixel_triple":True},
     {"id":"druide",      "name":"Druide 🌿",         "rarity":"epique",    "bonus":"Matériaux nature ×2","upgrade_discount":0.05,"shop_discount":0.10,"pixel_cost":0.8},
-    # Légendaires
     {"id":"roi",         "name":"Roi 👑",            "rarity":"legendaire","bonus":"TOUT -25%","upgrade_discount":0.25,"shop_discount":0.25,"pixel_cost":0.75},
     {"id":"sorcier",     "name":"Sorcier Noir 🧙",   "rarity":"legendaire","bonus":"+5pts toutes activités + pixels gratuits","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":0.0,"activity_bonus":5},
     {"id":"titan",       "name":"Titan ⚡",          "rarity":"legendaire","bonus":"Double points vocal/messages","upgrade_discount":0.10,"shop_discount":0.10,"pixel_cost":0.5},
 ]
 
 GACHA_RACES = [
-    # Communs
     {"id":"humain",      "name":"Humain 🧑",         "rarity":"commun",    "bonus":"+5% tous les points"},
     {"id":"gobelin",     "name":"Gobelin 👺",        "rarity":"commun",    "bonus":"Prix boutique -5%"},
-    {"id":"orc",         "name":"Orc 💪",            "rarity":"commun",    "bonus":"Points vocal +10%"},
+    {"id":"orc",         "name":"Orc 💪",             "rarity":"commun",    "bonus":"Points vocal +10%"},
     {"id":"halfelin",    "name":"Halfelin 🍀",       "rarity":"commun",    "bonus":"Chance gacha +2%"},
-    # Rares
     {"id":"elfe",        "name":"Elfe 🧝",           "rarity":"rare",      "bonus":"Points messages +15%"},
     {"id":"nain",        "name":"Nain ⛏️",           "rarity":"rare",      "bonus":"Matériaux -10%"},
     {"id":"demon",       "name":"Démon 😈",          "rarity":"rare",      "bonus":"Points activités +10%"},
-    {"id":"beastman",   "name":"Homme-Bête 🐾",     "rarity":"rare",      "bonus":"Points vocal +20%"},
-    # Épiques
+    {"id":"beastman",    "name":"Homme-Bête 🐾",     "rarity":"rare",      "bonus":"Points vocal +20%"},
     {"id":"dragon",      "name":"Semi-Dragon 🐉",    "rarity":"epique",    "bonus":"Pixels +50% par achat"},
     {"id":"ange",        "name":"Ange 😇",           "rarity":"epique",    "bonus":"-20% toute la boutique"},
     {"id":"fantome",     "name":"Fantôme 👻",        "rarity":"epique",    "bonus":"Réapparaît 1×/sem si éliminé"},
     {"id":"necromant",   "name":"Nécromanien 💀",    "rarity":"epique",    "bonus":"Récupère 50% mat. dépensés"},
-    # Légendaires
     {"id":"phenix",      "name":"Phénix 🔥",         "rarity":"legendaire","bonus":"Reroll gratuit 1×/semaine"},
     {"id":"celeste",     "name":"Être Céleste ⭐",   "rarity":"legendaire","bonus":"Tous les bonus ×1.5"},
-    {"id":"ancien",      "name":"Ancien 🌌",         "rarity":"legendaire","bonus":"Débloque map secrète"},
+    {"id":"ancien",      "name":"Ancien 🌌",         "rarity":"legendaire","bonus":"Incontournable"}
 ]
 
-def weighted_pick(pool):
-    """Tire un élément au hasard en respectant les chances de rareté."""
-    rarity_weights = {r: RARITIES[r]["chance"] for r in RARITIES}
-    # Groupe par rareté
-    by_rarity = {}
-    for item in pool:
-        r = item["rarity"]
-        by_rarity.setdefault(r, []).append(item)
-
-    rarities     = list(by_rarity.keys())
-    weights      = [rarity_weights.get(r, 1) for r in rarities]
-    chosen_rarity = _random.choices(rarities, weights=weights, k=1)[0]
-    return _random.choice(by_rarity[chosen_rarity]), chosen_rarity
-
-@app.route("/api/gacha/info")
-@require_auth
-def gacha_info():
-    doc = get_user_doc(request.user_id)
-    return jsonify({
-        "tickets_classe": doc.get("tickets_classe", 0),
-        "tickets_race":   doc.get("tickets_race", 0),
-        "current_classe": doc.get("classe"),
-        "current_race":   doc.get("race"),
-        "rarities":       RARITIES,
-    })
-
-@app.route("/api/gacha/pull/classe", methods=["POST"])
-@require_auth
-def gacha_pull_classe():
-    doc = get_user_doc(request.user_id)
-    if doc.get("tickets_classe", 0) < 1:
-        return jsonify({"error": "Pas de ticket classe ! Achètes-en en boutique."}), 400
-
-    result, rarity = weighted_pick(GACHA_CLASSES)
-    old_classe = doc.get("classe")
-
-    db.users.update_one(
-        {"user_id": request.user_id},
-        {
-            "$inc": {"tickets_classe": -1},
-            "$set": {"classe": result["id"]},
-            "$push": {"classe_history": {
-                "from": old_classe, "to": result["id"],
-                "rarity": rarity, "at": datetime.utcnow()
-            }}
-        }
-    )
-    return jsonify({
-        "result":   result,
-        "rarity":   rarity,
-        "rarity_info": RARITIES[rarity],
-        "old":      old_classe,
-        "tickets_left": doc.get("tickets_classe", 1) - 1,
-    })
-
-@app.route("/api/gacha/pull/race", methods=["POST"])
-@require_auth
-def gacha_pull_race():
-    doc = get_user_doc(request.user_id)
-    if doc.get("tickets_race", 0) < 1:
-        return jsonify({"error": "Pas de ticket race ! Achètes-en en boutique."}), 400
-
-    result, rarity = weighted_pick(GACHA_RACES)
-    old_race = doc.get("race")
-
-    db.users.update_one(
-        {"user_id": request.user_id},
-        {
-            "$inc": {"tickets_race": -1},
-            "$set": {"race": result["id"]},
-            "$push": {"race_history": {
-                "from": old_race, "to": result["id"],
-                "rarity": rarity, "at": datetime.utcnow()
-            }}
-        }
-    )
-    return jsonify({
-        "result":   result,
-        "rarity":   rarity,
-        "rarity_info": RARITIES[rarity],
-        "old":      old_race,
-        "tickets_left": doc.get("tickets_race", 1) - 1,
-    })
-
-# ── EXEMPLE MATHÉMATIQUE TAXE MARCHAND 20% (À insérer dans ta fonction boutique/vente) ──
-def calculer_vente_marchand(prix_unitaire, quantite):
-    valeur_brute = prix_unitaire * quantite
-    # Calcul strict de la taxe sans résidu flottant : 10 * 0.20 = 2
-    taxe = int(valeur_brute * 0.20) 
-    valeur_nette = valeur_brute - taxe # 10 - 2 = 8
-    return valeur_nette
-
-# ─────────────────────────────────────────────────────────────────────────────
-# QUÊTES QUOTIDIENNES
 # ─────────────────────────────────────────────────────────────────────────────
 
-import hashlib as _hashlib
-
-QUEST_TYPES = [
-    {"id":"messages", "label":"Envoie {n} messages",       "icon":"💬", "targets":[5,10,20],  "rewards":{"tickets_classe":1}},
-    {"id":"vocal",    "label":"Passe {n} minutes en vocal", "icon":"🎙️","targets":[5,15,30],  "rewards":{"tickets_race":1}},
-    {"id":"pixels",   "label":"Pose {n} pixels sur la map", "icon":"🎨","targets":[5,10,25],  "rewards":{"tickets_classe":1,"tickets_race":1}},
-    {"id":"messages2","label":"Envoie {n} messages",        "icon":"💬","targets":[15,30,50], "rewards":{"tickets_classe":2}},
-    {"id":"boutique", "label":"Achète {n} articles en boutique","icon":"🛒","targets":[1,3,5],"rewards":{"tickets_race":2}},
-]
-
-def get_daily_quest(user_id: str) -> dict:
-    """Génère une quête déterministe par joueur et par jour."""
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-    seed  = int(_hashlib.md5(f"{user_id}{today}".encode()).hexdigest(), 16)
-    rng   = _random.Random(seed)
-
-    quest_type = QUEST_TYPES[seed % len(QUEST_TYPES)]
-    target     = rng.choice(quest_type["targets"])
-    return {
-        "id":      quest_type["id"],
-        "label":   quest_type["label"].replace("{n}", str(target)),
-        "icon":    quest_type["icon"],
-        "target":  target,
-        "rewards": quest_type["rewards"],
-        "date":    today,
-    }
-
-@app.route("/api/quests/daily")
-@require_auth
-def get_daily_quest_route():
-    quest = get_daily_quest(request.user_id)
-    doc   = get_user_doc(request.user_id)
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-
-    # Progression actuelle
-    progress = 0
-    qid      = quest["id"]
-    if qid in ("messages", "messages2"):
-        # Compare les messages d'aujourd'hui
-        progress = doc.get("daily_messages", 0) if doc.get("daily_date") == today else 0
-    elif qid == "vocal":
-        progress = doc.get("daily_vocal_minutes", 0) if doc.get("daily_date") == today else 0
-    elif qid == "pixels":
-        progress = doc.get("daily_pixels", 0) if doc.get("daily_date") == today else 0
-    elif qid == "boutique":
-        progress = doc.get("daily_purchases", 0) if doc.get("daily_date") == today else 0
-
-    completed = doc.get("quest_completed_date") == today
-
-    return jsonify({
-        **quest,
-        "progress":  min(progress, quest["target"]),
-        "completed": completed,
-        "tickets_classe": doc.get("tickets_classe", 0),
-        "tickets_race":   doc.get("tickets_race", 0),
-    })
-
-@app.route("/api/quests/claim", methods=["POST"])
-@require_auth
-def claim_quest():
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-    doc   = get_user_doc(request.user_id)
-
-    if doc.get("quest_completed_date") == today:
-        return jsonify({"error": "Quête déjà réclamée aujourd'hui"}), 400
-
-    quest    = get_daily_quest(request.user_id)
-    progress = 0
-    qid      = quest["id"]
-    if qid in ("messages","messages2"):
-        progress = doc.get("daily_messages", 0) if doc.get("daily_date") == today else 0
-    elif qid == "vocal":
-        progress = doc.get("daily_vocal_minutes", 0) if doc.get("daily_date") == today else 0
-    elif qid == "pixels":
-        progress = doc.get("daily_pixels", 0) if doc.get("daily_date") == today else 0
-    elif qid == "boutique":
-        progress = doc.get("daily_purchases", 0) if doc.get("daily_date") == today else 0
-
-    if progress < quest["target"]:
-        return jsonify({"error": f"Pas encore terminé ({progress}/{quest['target']})"}), 400
-
-    rewards = quest["rewards"]
-    db.users.update_one(
-        {"user_id": request.user_id},
-        {
-            "$inc": rewards,
-            "$set": {"quest_completed_date": today}
-        }
-    )
-    rewards_display = []
-    for field, amt in rewards.items():
-        label = {"tickets_classe":"🎫 Ticket Classe","tickets_race":"🎟️ Ticket Race"}.get(field, field)
-        rewards_display.append(f"+{amt} {label}")
-
-    return jsonify({"ok": True, "rewards": rewards_display})
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
