@@ -62,36 +62,68 @@ async function apiFetch(path, options = {}) {
 // ── Endpoints ─────────────────────────────────────────────────────────────
 
 export const api = {
-    // Profil
+    // Profil & Classement (Déjà existants)
     getProfile:      ()           => apiFetch("/api/profile"),
     getLeaderboard:  ()           => apiFetch("/api/leaderboard"),
 
-    // Boutique
+    // Boutique (Déjà existant)
     getShop:         ()           => apiFetch("/api/shop"),
     buyItem:         (item, qty)  => apiFetch("/api/shop/buy", {
         method: "POST",
         body: JSON.stringify({ item, quantity: qty }),
     }),
 
-    // Skill Tree
+    // ✨ NOUVEAU : Histoire / Lore / Tutoriel
+    getStoryProgress: ()          => apiFetch("/api/story/tutorial/progress"),
+    completeTutorial: ()          => apiFetch("/api/story/tutorial/progress", {
+        method: "POST",
+        body: JSON.stringify({ step: "DONE" }),
+    }),
+
+    // ✨ NOUVEAU : Système One Bloc
+    getOneBlockState: ()          => apiFetch("/api/oneblock/state"),
+    mineOneBlock:     ()          => apiFetch("/api/oneblock/mine", { method: "POST" }),
+
+    // ✨ NOUVEAU : Marchand (Vente de matériaux)
+    sellResources:    (resource, qty) => apiFetch("/api/merchant/sell", {
+        method: "POST",
+        body: JSON.stringify({ item: resource, quantity: qty })
+    }),
+
+    // ✨ NOUVEAU : Forge (Craft d'équipement)
+    getForgeRecipes:  ()          => apiFetch("/api/forge/recipes"),
+    craftEquipment:   (recipeKey)  => apiFetch("/api/forge/craft", {
+        method: "POST",
+        body: JSON.stringify({ recipe_key: recipeKey })
+    }),
+
+    // ✨ NOUVEAU : Inventaire & Équipement
+    getInventory:     ()          => apiFetch("/api/inventory"),
+    equipItem:        (itemKey)   => apiFetch("/api/inventory/equip", {
+        method: "POST",
+        body: JSON.stringify({ item_key: itemKey })
+    }),
+
+    // ✨ NOUVEAU : Système de Boss
+    getBossState:     ()          => apiFetch("/api/boss/state"),
+    attackBoss:       ()          => apiFetch("/api/boss/attack", { method: "POST" }),
+
+    // ✨ NOUVEAU : Épreuves de l'Arbre Monde
+    completeTrial:    (nodeId)    => apiFetch("/api/skilltree/trial/complete", {
+        method: "POST",
+        body: JSON.stringify({ node_id: nodeId })
+    }),
+
+    // Skill Tree & Pixel Map (Garder tes fonctions de base)
     getSkillTree:    ()           => apiFetch("/api/skilltree"),
     unlockNode:      (node)       => apiFetch("/api/skilltree/unlock", {
         method: "POST",
         body: JSON.stringify({ node }),
     }),
-
-    // Pixel Map
     getPixelMap:     (world)      => apiFetch(`/api/pixelmap/${world}`),
     placePixel:      (world, x, y, color) => apiFetch(`/api/pixelmap/${world}/place`, {
         method: "POST",
         body: JSON.stringify({ x, y, color }),
-    }),
-
-    // Classes
-    getClasses:      ()           => apiFetch("/api/classes"),
-    chooseClass:     (classe)     => apiFetch("/api/classes/choose", {
-        method: "POST",
-        body: JSON.stringify({ classe }),
     }),
 };
 
