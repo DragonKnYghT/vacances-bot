@@ -2,28 +2,30 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Connexion...</title>
+    <title>Connexion en cours...</title>
     <link rel="stylesheet" href="static/css/global.css">
-    <style>
-        body { display:flex; align-items:center; justify-content:center; min-height:100vh; }
-    </style>
 </head>
 <body>
     <div class="loader">
         <div class="spinner"></div>
-        <span>Connexion en cours...</span>
+        <span>Finalisation de la connexion avec Discord...</span>
     </div>
+
     <script type="module">
         import { setToken } from "./static/js/api.js";
 
-        const params = new URLSearchParams(window.location.search);
-        const token  = params.get("token");
+        // Récupérer le token depuis les paramètres de l'URL (?token=...)
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
 
         if (token) {
+            // Sauvegarder le jeton dans le localStorage via ton api.js
             setToken(token);
+            // Rediriger vers le profil du joueur
             window.location.href = "profile.html";
         } else {
-            document.querySelector(".loader span").textContent = "Erreur lors de la connexion.";
+            alert("Erreur d'authentification : Aucun jeton reçu.");
+            window.location.href = "index.html";
         }
     </script>
 </body>
