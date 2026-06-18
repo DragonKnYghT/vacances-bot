@@ -15,17 +15,19 @@ import random as _random
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
-CORS(app,
-    origins=[
-        "https://DragonKnYghT.github.io",
-        "http://localhost:3000",
-        "http://127.0.0.1:5500",
-        "http://127.0.0.1:5501", # Port alternatif Live Server souvent utilisé
-    ],
-    supports_credentials=True,
-    allow_headers=["Content-Type", "Authorization"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": [
+            "https://dragonknyght.github.io",
+            "https://DragonKnYghT.github.io",
+            "http://localhost:3000",
+            "http://127.0.0.1:5500",
+            "http://127.0.0.1:5501"
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 # ── MongoDB ──────────────────────────────────────────────────────────────────
 MONGO_URI = os.environ.get("MONGO_URI")
