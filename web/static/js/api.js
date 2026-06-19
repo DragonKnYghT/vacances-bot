@@ -125,6 +125,34 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ x, y, color }),
     }),
+
+    // Classes (legacy — gardé pour compat, mais la classe vient maintenant du Gacha)
+    getClasses:      ()           => apiFetch("/api/classes"),
+    chooseClass:     (classe)     => apiFetch("/api/classes/choose", {
+        method: "POST",
+        body: JSON.stringify({ classe }),
+    }),
+
+    // Gacha
+    getGachaPity:    ()           => apiFetch("/api/gacha/pity/status"),
+    pullGacha:       (type)       => apiFetch("/api/gacha/pull", {
+        method: "POST",
+        body: JSON.stringify({ type }),
+    }),
+
+    // Codes promo
+    redeemCode:      (code)       => apiFetch("/api/codes/redeem", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+    }),
+    checkCode:       (code)       => apiFetch("/api/codes/check", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+    }),
+
+    // One Bloc / Cliqueur
+    getOneBlockState: ()          => apiFetch("/api/oneblock/state"),
+    mineOneBlock:     ()          => apiFetch("/api/oneblock/mine", { method: "POST" }),
 };
 
 // ── Avatar Discord ────────────────────────────────────────────────────────
