@@ -1,89 +1,166 @@
 /**
- * ui.js — Composants UI partagés (nav, toast, loader)
+ * api.js — Client API centralisé
+ * Toutes les pages importent ce fichier.
  */
 
-import { isLoggedIn, logout, getToken, discordAvatar } from "./api.js";
+const API_BASE = "https://vacances-bot-web.onrender.com"; // ← à remplacer
 
-// ── Nav ───────────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────
 
-export function renderNav(activePage = "") {
-    const nav = document.createElement("nav");
-    nav.innerHTML = `
-        <span class="logo">🏰 Serveur Vacances</span>
-        <a href="profile.html" ${activePage === "profile" ? 'class="active"' : ""}>Profil</a>
-        <a href="cliqueur.html" ${activePage === "cliqueur" ? 'class="active"' : ""}>⛏️ Cliqueur</a>
-        <a href="shop.html"    ${activePage === "shop"    ? 'class="active"' : ""}>Boutique</a>
-        <a href="skilltree.html" ${activePage === "skilltree" ? 'class="active"' : ""}>Skill Tree</a>
-        <a href="pixelmap.html"  ${activePage === "pixelmap"  ? 'class="active"' : ""}>Pixel Map</a>
-        <a href="leaderboard.html" ${activePage === "leaderboard" ? 'class="active"' : ""}>Classement</a>
-        <a href="gacha.html" ${activePage === "gacha" ? 'class="active"' : ""}>🎰 Gacha</a>
-        <a href="codes.html" ${activePage === "codes" ? 'class="active"' : ""}>🎁 Codes</a>
-        <div id="nav-user" style="display:flex;align-items:center;gap:.6rem;margin-left:.5rem"></div>
-    `;
-    document.body.prepend(nav);
+export function getToken() {
+    return localStorage.getItem("jwt_token");
 }
 
-export async function loadNavUser() {
-    const el = document.getElementById("nav-user");
-    if (!el || !isLoggedIn()) return;
-    try {
-        const { getProfile } = await import("./api.js");
-        // On utilise le profil déjà chargé sur la page si dispo
-        const profile = window.__profile;
-        if (!profile) return;
-        const avatarUrl = discordAvatar(profile.user_id, profile.avatar, 64);
-        el.innerHTML = `
-            <img id="nav-avatar" src="${avatarUrl}" alt="avatar" crossorigin="anonymous" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
-            <span id="nav-username">${profile.global_name || profile.username || "Joueur"}</span>
-            <button class="btn-outline" style="font-size:.8rem;padding:.3rem .8rem" onclick="import('./static/js/api.js').then(m=>m.logout())">Déco</button>
-        `;
-    } catch (_) {}
+export function setToken(token) {
+    localStorage.setItem("jwt_token", token);
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────────
-
-let toastContainer;
-
-function getToastContainer() {
-    if (!toastContainer) {
-        toastContainer = document.createElement("div");
-        toastContainer.id = "toast-container";
-        document.body.appendChild(toastContainer);
-    }
-    return toastContainer;
+export function clearToken() {
+    localStorage.removeItem("jwt_token");
 }
 
-export function toast(message, type = "info", duration = 3500) {
-    const c = getToastContainer();
-    const el = document.createElement("div");
-    el.className = `toast ${type}`;
-    el.textContent = message;
-    c.appendChild(el);
-    setTimeout(() => el.remove(), duration);
+export function isLoggedIn() {
+    return !!getToken();
 }
 
-// ── Loader ────────────────────────────────────────────────────────────────
-
-export function showLoader(container, message = "Chargement...") {
-    container.innerHTML = `
-        <div class="loader">
-            <div class="spinner"></div>
-            <span>${message}</span>
-        </div>`;
+export function logout() {
+    clearToken();
+    window.location.href = "index.html";
 }
 
-// ── Guard : redirige si pas connecté ──────────────────────────────────────
+/** Redirige vers le login Discord */
+export function loginWithDiscord() {
+    window.location.href = `${API_BASE}/auth/login`;
+}
 
-export function requireAuth() {
-    if (!isLoggedIn()) {
+// ── Fetch helper ──────────────────────────────────────────────────────────
+
+async function apiFetch(path, options = {}) {
+    const token = getToken();
+    const headers = {
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        ...options.headers,
+    };
+
+    const resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+    if (resp.status === 401) {
+        clearToken();
         window.location.href = "index.html";
-        return false;
+        return;
     }
-    return true;
+
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: "Erreur réseau" }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+    }
+
+    return resp.json();
 }
 
-// ── Format nombre ──────────────────────────────────────────────────────────
+// ── Endpoints ─────────────────────────────────────────────────────────────
 
-export function fmt(n) {
-    return Number(n || 0).toLocaleString("fr-FR");
+export const api = {
+    // Profil & Classement (Déjà existants)
+    getProfile:      ()           => apiFetch("/api/profile"),
+    getLeaderboard:  ()           => apiFetch("/api/leaderboard"),
+
+    // Boutique (Déjà existant)
+    getShop:         ()           => apiFetch("/api/shop"),
+    buyItem:         (item, qty)  => apiFetch("/api/shop/buy", {
+        method: "POST",
+        body: JSON.stringify({ item, quantity: qty }),
+    }),
+
+    // ✨ NOUVEAU : Histoire / Lore / Tutoriel
+    getStoryProgress: ()          => apiFetch("/api/story/tutorial/progress"),
+    completeTutorial: ()          => apiFetch("/api/story/tutorial/progress", {
+        method: "POST",
+        body: JSON.stringify({ step: "DONE" }),
+    }),
+
+    // ✨ NOUVEAU : Système One Bloc
+    getOneBlockState: ()          => apiFetch("/api/oneblock/state"),
+    mineOneBlock:     ()          => apiFetch("/api/oneblock/mine", { method: "POST" }),
+
+    // ✨ NOUVEAU : Marchand (Vente de matériaux)
+    sellResources:    (resource, qty) => apiFetch("/api/merchant/sell", {
+        method: "POST",
+        body: JSON.stringify({ item: resource, quantity: qty })
+    }),
+
+    // ✨ NOUVEAU : Forge (Craft d'équipement)
+    getForgeRecipes:  ()          => apiFetch("/api/forge/recipes"),
+    craftEquipment:   (recipeKey)  => apiFetch("/api/forge/craft", {
+        method: "POST",
+        body: JSON.stringify({ recipe_key: recipeKey })
+    }),
+
+    // ✨ NOUVEAU : Inventaire & Équipement
+    getInventory:     ()          => apiFetch("/api/inventory"),
+    equipItem:        (itemKey)   => apiFetch("/api/inventory/equip", {
+        method: "POST",
+        body: JSON.stringify({ item_key: itemKey })
+    }),
+
+    // ✨ NOUVEAU : Système de Boss
+    getBossState:     ()          => apiFetch("/api/boss/state"),
+    attackBoss:       ()          => apiFetch("/api/boss/attack", { method: "POST" }),
+
+    // ✨ NOUVEAU : Épreuves de l'Arbre Monde
+    completeTrial:    (nodeId)    => apiFetch("/api/skilltree/trial/complete", {
+        method: "POST",
+        body: JSON.stringify({ node_id: nodeId })
+    }),
+
+    // Skill Tree & Pixel Map (Garder tes fonctions de base)
+    getSkillTree:    ()           => apiFetch("/api/skilltree"),
+    unlockNode:      (node)       => apiFetch("/api/skilltree/unlock", {
+        method: "POST",
+        body: JSON.stringify({ node }),
+    }),
+    getPixelMap:     (world)      => apiFetch(`/api/pixelmap/${world}`),
+    placePixel:      (world, x, y, color) => apiFetch(`/api/pixelmap/${world}/place`, {
+        method: "POST",
+        body: JSON.stringify({ x, y, color }),
+    }),
+
+    // Classes (legacy — gardé pour compat, mais la classe vient maintenant du Gacha)
+    getClasses:      ()           => apiFetch("/api/classes"),
+    chooseClass:     (classe)     => apiFetch("/api/classes/choose", {
+        method: "POST",
+        body: JSON.stringify({ classe }),
+    }),
+
+    // Gacha
+    getGachaPity:    ()           => apiFetch("/api/gacha/pity/status"),
+    pullGacha:       (type)       => apiFetch("/api/gacha/pull", {
+        method: "POST",
+        body: JSON.stringify({ type }),
+    }),
+
+    // Codes promo
+    redeemCode:      (code)       => apiFetch("/api/codes/redeem", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+    }),
+    checkCode:       (code)       => apiFetch("/api/codes/check", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+    }),
+
+    // One Bloc / Cliqueur
+    getOneBlockState: ()          => apiFetch("/api/oneblock/state"),
+    mineOneBlock:     ()          => apiFetch("/api/oneblock/mine", { method: "POST" }),
+};
+
+// ── Avatar Discord ────────────────────────────────────────────────────────
+
+export function discordAvatar(userId, avatarHash, size = 128) {
+    if (!avatarHash) {
+        const def = parseInt(userId) % 5;
+        return `https://cdn.discordapp.com/embed/avatars/${def}.png`;
+    }
+    return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.png?size=${size}`;
 }
