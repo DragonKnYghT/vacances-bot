@@ -181,12 +181,10 @@ const RACE_ICONS = {
 const MAT_ICONS = { pierre:"🪨", bois:"🪵", fer:"⚙️", cristal:"💎", magie:"✨" };
 
 async function init() {
-    const [profile, classesResp] = await Promise.all([api.getProfile(), api.getClasses()]);
+    const profile = await api.getProfile();
     window.__profile = profile;
     await loadNavUser();
 
-    const classes = classesResp.classes;
-    
     // Fix Avatar
     const userId = profile.user_id || profile.discord_id;
     const avatarHash = profile.avatar_hash || profile.avatar || null;
@@ -196,16 +194,19 @@ async function init() {
     const vocalPoints = profile.vocal_points || 0;
     const messagePoints = profile.message_points || 0;
     const maxPts = Math.max(vocalPoints, messagePoints, 1);
-    
+
     const vocalPct = Math.round((vocalPoints / maxPts) * 100);
     const messagePct = Math.round((messagePoints / maxPts) * 100);
 
     // Normalisation des clés pour les dictionnaires
     const raceKey = profile.race ? profile.race.toLowerCase() : "";
-    const classKey = profile.classe ? profile.classe.toLowerCase() : "";
 
     // Données de la race actuelle du joueur
     const currentRace = RACES_INFO[raceKey] || null;
+
+    // La classe vient maintenant uniquement du Gacha : profile.classe contient
+    // directement le nom complet (ex: "Soldat ⚔️"), pas une clé de CLASSES.
+    const classeName = profile.classe || null;
 
     document.getElementById("main-content").innerHTML = `
         <div class="page">
@@ -217,7 +218,7 @@ async function init() {
                         <span>🏅 Rang #${profile.rank ?? "?"}</span>
                         <span>💠 ${fmt(profile.total_points)} pts total</span>
                         ${profile.race && profile.race !== "Aucune" ? `<span class="tag gold">${RACE_ICONS[raceKey] || "🧬"} ${profile.race}</span>` : '<span class="tag">Aucune race</span>'}
-                        ${profile.classe ? `<span class="tag purple">${classes[profile.classe]?.name}</span>` : '<span class="tag">Aucune classe</span>'}
+                        ${classeName ? `<span class="tag purple">${classeName}</span>` : '<span class="tag">Aucune classe</span>'}
                         <span>🎨 ${profile.pixels_remaining ?? 0} pixels restants</span>
                     </div>
                 </div>
@@ -250,25 +251,24 @@ async function init() {
             <section>
                 <h2>Fiche de Personnage RPG</h2>
                 <div class="rpg-grid">
-                    
+
                     <div class="rpg-card ${currentRace ? 'active-card' : ''}">
                         <div style="font-size: .75rem; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom:.2rem">Race active</div>
                         <div class="rpg-name">${currentRace ? `${currentRace.icon} ${currentRace.name}` : "🧬 Aucune Race"}</div>
-                        <div class="rpg-desc">${currentRace ? currentRace.desc : "Vous n'avez pas encore défini de race sur Discord."}</div>
+                        <div class="rpg-desc">${currentRace ? currentRace.desc : "Tire la roue Gacha pour obtenir ta race !"}</div>
                         ${currentRace ? `<div class="rpg-bonus">Bonus racial : <span>${currentRace.bonus}</span></div>` : ""}
                     </div>
 
-                    <div class="rpg-card ${profile.classe ? 'active-card' : ''}">
+                    <div class="rpg-card ${classeName ? 'active-card' : ''}">
                         <div style="font-size: .75rem; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom:.2rem">Classe active</div>
-                        ${profile.classe
+                        ${classeName
                             ? `
-                                <div class="rpg-name">${classes[profile.classe]?.name}</div>
-                                <div class="rpg-desc">${classes[profile.classe]?.description}</div>
-                                <div class="rpg-bonus">Bonus de classe : <span>${CLASSES_INFO[profile.classe]?.bonus_text || "Aucun avantage"}</span></div>
+                                <div class="rpg-name">${classeName}</div>
+                                <div class="rpg-desc">Obtenue via le Gacha — change uniquement si tu retires.</div>
                               `
                             : `
                                 <div class="rpg-name">🎭 Aucune classe</div>
-                                <div class="rpg-desc">Sélectionnez une spécialisation permanente ci-dessous pour débloquer votre passif.</div>
+                                <div class="rpg-desc">Tire la roue Gacha pour obtenir ta classe !</div>
                               `
                         }
                     </div>
@@ -276,15 +276,14 @@ async function init() {
                 </div>
             </section>
 
-            ${!profile.classe ? `
             <section>
-                <h2>Choisis ta classe</h2>
-                <div class="card" style="margin-bottom:.75rem">
-                    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">Une fois choisie, elle est permanente !</p>
-                    <div class="classes-grid" id="classes-grid"></div>
+                <div class="card" style="text-align:center;padding:1.5rem">
+                    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+                        🎰 Ta classe et ta race sont déterminées par le Gacha — chaque tirage remplace l'ancienne, sans retour en arrière possible.
+                    </p>
+                    <a href="gacha.html" class="btn-primary" style="display:inline-block">Aller au Gacha →</a>
                 </div>
             </section>
-            ` : ''}
 
             <section>
                 <h2>Matériaux</h2>
@@ -333,34 +332,6 @@ async function init() {
                     ${world.icon} ${world.name} ${isUnlocked ? "✓" : "🔒"}
                 </div>`;
         }
-    }
-
-    // Remplissage Choix de classe (uniquement si le conteneur existe dans le DOM)
-    const classGrid = document.getElementById("classes-grid");
-    if (classGrid) {
-        for (const [key, cls] of Object.entries(classes)) {
-            const btn = document.createElement("div");
-            btn.className = "class-option";
-            const icon = cls.name.match(/\S+$/)?.[0] ?? "⭐";
-            btn.innerHTML = `
-                <div class="cls-icon">${icon}</div>
-                <div class="cls-name">${cls.name.replace(/\s*\S+$/, "")}</div>
-                <div class="cls-desc">${cls.description}</div>
-            `;
-            btn.addEventListener("click", () => pickClass(key, cls.name));
-            classGrid.appendChild(btn);
-        }
-    }
-}
-
-async function pickClass(key, name) {
-    if (!confirm(`Choisir la classe ${name} ? Ce choix est définitif.`)) return;
-    try {
-        await api.chooseClass(key);
-        toast(`Classe ${name} choisie !`, "success");
-        setTimeout(() => location.reload(), 1000);
-    } catch (e) {
-        toast(e.message, "error");
     }
 }
 
