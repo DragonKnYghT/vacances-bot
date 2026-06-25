@@ -25,7 +25,13 @@
             padding: 1.25rem;
             gap: 1rem;
         }
-        .st-sidebar h2 { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+        .st-sidebar h2 {
+            font-size: .8rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            font-weight: 600;
+        }
 
         .mat-row {
             display: flex; align-items: center; justify-content: space-between;
@@ -52,17 +58,97 @@
         .cost-row.ok   { color: var(--green); }
         .cost-row.nok  { color: var(--red); }
 
-        #btn-unlock {
-            margin-top: .5rem;
-            width: 100%;
-            padding: .7rem;
-        }
+        #btn-unlock { margin-top: .5rem; width: 100%; padding: .7rem; }
+
         .unlocked-badge {
             background: rgba(61,214,140,.15); color: var(--green);
             border: 1px solid var(--green); border-radius: 8px;
             padding: .5rem .75rem; font-size: .85rem; font-weight: 700;
             text-align: center;
         }
+
+        /* ── Zone principale (canvas + barre du haut) ── */
+        .st-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── Barre supérieure : switch Base/Joueur + indicateur progression ── */
+        .st-topbar {
+            background: var(--bg2);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: .6rem 1.25rem;
+            gap: 1rem;
+            flex-shrink: 0;
+        }
+
+        .tree-switch {
+            display: flex;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .tree-switch button {
+            border-radius: 0;
+            background: transparent;
+            color: var(--muted);
+            font-size: .85rem;
+            font-weight: 600;
+            padding: .4rem 1rem;
+            border: none;
+            transition: background .15s, color .15s;
+        }
+        .tree-switch button.active {
+            background: var(--accent);
+            color: #fff;
+        }
+        .tree-switch button:hover:not(.active) {
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        .world-progress {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            font-size: .85rem;
+        }
+        .world-progress .world-name {
+            font-weight: 700;
+            color: var(--text);
+        }
+        .prog-track {
+            width: 120px;
+            height: 6px;
+            background: var(--bg3);
+            border-radius: 99px;
+            overflow: hidden;
+        }
+        .prog-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--green));
+            border-radius: 99px;
+            transition: width .4s ease;
+        }
+        .prog-label { color: var(--muted); font-size: .8rem; }
+
+        .world-completed-banner {
+            background: rgba(61,214,140,.12);
+            border: 1px solid var(--green);
+            border-radius: 8px;
+            padding: .3rem .75rem;
+            color: var(--green);
+            font-size: .85rem;
+            font-weight: 700;
+            display: none;
+        }
+        .world-completed-banner.visible { display: block; }
 
         /* ── Canvas SVG ── */
         .st-canvas {
@@ -82,9 +168,7 @@
 
         /* Nœuds SVG */
         .st-node { cursor: pointer; }
-        .st-node .node-bg {
-            transition: filter .15s;
-        }
+        .st-node .node-bg { transition: filter .15s; }
         .st-node:hover .node-bg { filter: brightness(1.3); }
 
         /* Zoom controls */
@@ -102,9 +186,62 @@
         }
         .zoom-btn:hover { background: var(--bg3); }
 
+        /* ── Sélecteur de monde (bas gauche du canvas) ── */
+        .world-selector {
+            position: absolute;
+            bottom: 1rem;
+            left: 1rem;
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: .75rem 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: .5rem;
+            min-width: 190px;
+        }
+        .world-selector .ws-title {
+            font-size: .7rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            font-weight: 700;
+            margin-bottom: .1rem;
+        }
+        .world-btn {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            padding: .45rem .75rem;
+            border-radius: 8px;
+            background: var(--bg3);
+            border: 1.5px solid transparent;
+            color: var(--muted);
+            font-size: .85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: border-color .15s, color .15s, background .15s;
+            width: 100%;
+            text-align: left;
+        }
+        .world-btn:hover:not(:disabled):not(.active-world) {
+            border-color: var(--border);
+            color: var(--text);
+        }
+        .world-btn.active-world {
+            border-color: var(--accent);
+            color: var(--text);
+            background: rgba(124,92,252,.12);
+        }
+        .world-btn:disabled {
+            cursor: not-allowed;
+            opacity: .45;
+        }
+        .world-btn .lock-icon { margin-left: auto; font-size: .8rem; }
+
         /* Mini-légende */
         .legend {
-            position: absolute; bottom: 1rem; left: 1rem;
+            position: absolute; bottom: 1rem; right: 60px;
             background: var(--bg2); border: 1px solid var(--border);
             border-radius: 10px; padding: .75rem 1rem;
             display: flex; flex-direction: column; gap: .4rem; font-size: .8rem;
@@ -121,6 +258,8 @@
 <div id="nav-placeholder"></div>
 
 <div class="st-layout">
+
+    <!-- ── Sidebar ── -->
     <div class="st-sidebar">
         <div>
             <h2 style="margin-bottom:.75rem">🧱 Matériaux</h2>
@@ -132,6 +271,9 @@
             <div id="node-detail">
                 <h3 id="nd-name"></h3>
                 <p id="nd-desc"></p>
+                <div id="nd-tree-badge" style="display:none">
+                    <span class="tag" id="nd-tree-label"></span>
+                </div>
                 <div>
                     <div style="font-size:.75rem;color:var(--muted);margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.05em">Coût</div>
                     <div class="cost-list" id="nd-cost"></div>
@@ -143,28 +285,54 @@
                 Clique sur un nœud pour voir les détails.
             </div>
         </div>
-
-        <div>
-            <h2 style="margin-bottom:.75rem">🌍 Mondes débloqués</h2>
-            <div id="worlds-list"></div>
-        </div>
     </div>
 
-    <div class="st-canvas" id="st-canvas">
-        <svg id="st-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <!-- ── Zone principale ── -->
+    <div class="st-main">
 
-        <div class="zoom-controls">
-            <div class="zoom-btn" id="zoom-in">+</div>
-            <div class="zoom-btn" id="zoom-reset">⌂</div>
-            <div class="zoom-btn" id="zoom-out">−</div>
+        <!-- Barre supérieure : switch + progression -->
+        <div class="st-topbar">
+            <div class="tree-switch">
+                <button id="btn-base" class="active" onclick="switchTree('base')">🌍 Arbre Base</button>
+                <button id="btn-player" onclick="switchTree('player')">🧙 Arbre Joueur</button>
+            </div>
+
+            <div class="world-progress">
+                <span class="world-name" id="prog-world-name">—</span>
+                <div class="prog-track">
+                    <div class="prog-fill" id="prog-fill" style="width:0%"></div>
+                </div>
+                <span class="prog-label" id="prog-label">0 / 0</span>
+                <div class="world-completed-banner" id="world-completed-banner">
+                    🎉 Monde terminé !
+                </div>
+            </div>
         </div>
 
-        <div class="legend">
-            <div style="font-size:.75rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem">Légende</div>
-            <div class="legend-row"><div class="legend-dot" style="background:#3dd68c"></div> Débloqué</div>
-            <div class="legend-row"><div class="legend-dot" style="background:#7c5cfc"></div> Disponible</div>
-            <div class="legend-row"><div class="legend-dot" style="background:#f5c542"></div> Achetable</div>
-            <div class="legend-row"><div class="legend-dot" style="background:#2a2d4a"></div> Verrouillé</div>
+        <!-- Canvas SVG -->
+        <div class="st-canvas" id="st-canvas">
+            <svg id="st-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+
+            <div class="zoom-controls">
+                <div class="zoom-btn" id="zoom-in">+</div>
+                <div class="zoom-btn" id="zoom-reset">⌂</div>
+                <div class="zoom-btn" id="zoom-out">−</div>
+            </div>
+
+            <!-- Sélecteur de monde -->
+            <div class="world-selector" id="world-selector">
+                <div class="ws-title">🌍 Changer de monde</div>
+                <!-- Rempli dynamiquement -->
+            </div>
+
+            <!-- Légende -->
+            <div class="legend">
+                <div style="font-size:.75rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem">Légende</div>
+                <div class="legend-row"><div class="legend-dot" style="background:#3dd68c"></div> Débloqué</div>
+                <div class="legend-row"><div class="legend-dot" style="background:#7c5cfc"></div> Disponible</div>
+                <div class="legend-row"><div class="legend-dot" style="background:#f5c542"></div> Achetable</div>
+                <div class="legend-row"><div class="legend-dot" style="background:#2a2d4a"></div> Verrouillé</div>
+            </div>
         </div>
     </div>
 </div>
@@ -176,26 +344,31 @@ import { renderNav, loadNavUser, requireAuth, toast, fmt } from "./static/js/ui.
 renderNav("skilltree");
 if (!requireAuth()) throw new Error("not auth");
 
-// Emojis des matériaux alignés sur le Back-end (Clés en Anglais)
-const MAT_ICONS = { wood: "🪵", stone: "🪨", iron: "⚙️", gold: "👑", diamond: "💎", netherite: "🔥" };
+// ── Constantes ─────────────────────────────────────────────────────────────
+const MAT_ICONS   = { bois:"🪵", pierre:"🪨", fer:"⚙️", magie:"👑", cristal:"💎", netherite:"🔥" };
 const WORLD_ICONS = { monde_1:"🌲", monde_2:"🔥", monde_3:"🌊", monde_4:"⛰️" };
+const WORLD_NAMES = {
+    monde_1: "La Forêt des Débuts",
+    monde_2: "Les Plaines de Feu",
+    monde_3: "L'Océan Profond",
+    monde_4: "Le Sommet des Dieux",
+};
 
-// Traduction visuelle pour l'affichage de l'interface
-const MAT_LABELS = { wood: "bois", stone: "pierre", iron: "fer", gold: "magie", diamond: "cristal", netherite: "netherite" };
+// ── État global ─────────────────────────────────────────────────────────────
+let currentWorldId  = "monde_1";
+let currentTreeType = "base";   // "base" | "player"
+let treeData        = null;     // réponse complète du dernier getSkillTree()
+let currentNodes    = [];       // liste des nœuds affichés actuellement
+let selected        = null;
+let unlockedWorlds  = ["monde_1"];
 
-// ── État ──────────────────────────────────────────────────────────────────
-let treeData   = null;
-let selected   = null;
-
-// ── Pan & Zoom ─────────────────────────────────────────────────────────────
+// ── Pan & Zoom ──────────────────────────────────────────────────────────────
 const canvas = document.getElementById("st-canvas");
 const svg    = document.getElementById("st-svg");
-
-const VIEW = { x: 0, y: 0, scale: 1 };
-const W = 1200, H = 800; // dimensions internes SVG (élargi pour les 2 arbres)
+const VIEW   = { x: 0, y: 0, scale: 1 };
+const W = 900, H = 700;
 
 function applyTransform() {
-    svg.setAttribute("transform-origin", "0 0");
     svg.style.transform = `translate(${VIEW.x}px, ${VIEW.y}px) scale(${VIEW.scale})`;
 }
 
@@ -207,10 +380,9 @@ function setInitialView() {
     applyTransform();
 }
 
-// Drag
 let drag = null;
 canvas.addEventListener("mousedown", e => {
-    if (e.target.closest(".st-node")) return;
+    if (e.target.closest(".st-node") || e.target.closest(".world-selector") || e.target.closest(".zoom-controls")) return;
     drag = { sx: e.clientX - VIEW.x, sy: e.clientY - VIEW.y };
 });
 window.addEventListener("mousemove", e => {
@@ -221,11 +393,10 @@ window.addEventListener("mousemove", e => {
 });
 window.addEventListener("mouseup", () => drag = null);
 
-// Wheel zoom
 canvas.addEventListener("wheel", e => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.1 : 0.91;
-    const r = canvas.getBoundingClientRect();
+    const r  = canvas.getBoundingClientRect();
     const mx = e.clientX - r.left;
     const my = e.clientY - r.top;
     VIEW.x = mx - (mx - VIEW.x) * factor;
@@ -238,8 +409,116 @@ document.getElementById("zoom-in").onclick    = () => { VIEW.scale *= 1.2; apply
 document.getElementById("zoom-out").onclick   = () => { VIEW.scale *= 0.83; applyTransform(); };
 document.getElementById("zoom-reset").onclick = setInitialView;
 
-// ── Rendu SVG ─────────────────────────────────────────────────────────────
-const NODE_R = 44; // rayon des cercles
+// ── Switch Base / Joueur ────────────────────────────────────────────────────
+window.switchTree = function(type) {
+    currentTreeType = type;
+    document.getElementById("btn-base").classList.toggle("active",   type === "base");
+    document.getElementById("btn-player").classList.toggle("active", type === "player");
+
+    if (!treeData) return;
+    currentNodes = type === "base"
+        ? (treeData.base_tree   || treeData.nodes || [])
+        : (treeData.player_tree || []);
+
+    selected = null;
+    hideNodeDetail();
+    renderTree();
+    updateProgressBar();
+    setInitialView();
+};
+
+// ── Chargement d'un monde ───────────────────────────────────────────────────
+async function loadWorld(worldId) {
+    currentWorldId = worldId;
+    selected = null;
+    hideNodeDetail();
+
+    // Mettre à jour les boutons du sélecteur
+    document.querySelectorAll(".world-btn").forEach(b => {
+        b.classList.toggle("active-world", b.dataset.world === worldId);
+    });
+
+    try {
+        // L'API backend actuelle n'a qu'une seule route /api/skilltree (sans world_id)
+        // On appelle quand même avec le world_id pour la compatibilité future ;
+        // si 404, on replie sur l'ancienne route.
+        let data;
+        try {
+            data = await api.getSkillTree(worldId);
+        } catch (_) {
+            data = await api.getSkillTree("monde_1");
+        }
+        treeData = data;
+
+        renderSidebar(data);
+
+        currentNodes = currentTreeType === "base"
+            ? (data.base_tree   || data.nodes || [])
+            : (data.player_tree || []);
+
+        renderTree();
+        updateProgressBar();
+        setInitialView();
+    } catch(e) {
+        toast("Impossible de charger l'arbre : " + e.message, "error");
+    }
+}
+
+// ── Rendu du sélecteur de monde ─────────────────────────────────────────────
+function renderWorldSelector() {
+    const el = document.getElementById("world-selector");
+    const rows = Object.entries(WORLD_NAMES).map(([id, name]) => {
+        const isUnlocked = unlockedWorlds.includes(id);
+        const isActive   = id === currentWorldId;
+        return `<button
+            class="world-btn ${isActive ? "active-world" : ""}"
+            data-world="${id}"
+            ${isUnlocked ? "" : "disabled"}
+            onclick="window.__selectWorld('${id}')"
+        >
+            ${WORLD_ICONS[id]} ${name}
+            <span class="lock-icon">${isUnlocked ? (isActive ? "▶" : "") : "🔒"}</span>
+        </button>`;
+    }).join("");
+
+    // On garde le titre et on remplace les boutons
+    el.querySelector(".ws-title") && (el.innerHTML = `<div class="ws-title">🌍 Changer de monde</div>${rows}`);
+    if (!el.querySelector(".ws-title")) {
+        el.innerHTML = `<div class="ws-title">🌍 Changer de monde</div>${rows}`;
+    }
+}
+
+window.__selectWorld = function(id) {
+    if (!unlockedWorlds.includes(id)) return;
+    loadWorld(id);
+};
+
+// ── Barre de progression ─────────────────────────────────────────────────────
+function updateProgressBar() {
+    if (!treeData) return;
+
+    // Pour l'arbre base, on compte les nœuds base débloqués
+    const baseNodes  = treeData.base_tree || treeData.nodes || [];
+    const totalBase  = baseNodes.length;
+    const doneBase   = baseNodes.filter(n => n.unlocked).length;
+    const pct        = totalBase > 0 ? Math.round(doneBase / totalBase * 100) : 0;
+
+    document.getElementById("prog-world-name").textContent = WORLD_NAMES[currentWorldId] || currentWorldId;
+    document.getElementById("prog-fill").style.width       = pct + "%";
+    document.getElementById("prog-label").textContent      = `${doneBase} / ${totalBase}`;
+
+    const completed = doneBase === totalBase && totalBase > 0;
+    const banner = document.getElementById("world-completed-banner");
+    banner.classList.toggle("visible", completed);
+    if (completed && treeData.next_world && treeData.next_world_unlocked) {
+        banner.textContent = `🎉 Monde terminé — ${WORLD_NAMES[treeData.next_world] || treeData.next_world} débloqué !`;
+    } else if (completed) {
+        banner.textContent = "🎉 Arbre de base complété !";
+    }
+}
+
+// ── Rendu SVG ────────────────────────────────────────────────────────────────
+const NODE_R = 44;
 
 function nodeColor(node) {
     if (node.unlocked)   return "#3dd68c";
@@ -253,30 +532,37 @@ function nodeTextColor(node) {
     return "#e2e4f0";
 }
 
-function renderTree(data) {
-    treeData = data;
+function renderTree() {
     svg.innerHTML = "";
     svg.setAttribute("width", W);
     svg.setAttribute("height", H);
 
-    // Sécurisation totale des listes pour éviter les crashs si variables absentes
-    const nodes = data && data.nodes ? data.nodes : [];
-    const byId  = Object.fromEntries(nodes.map(n => [n.id, n]));
+    const nodes = currentNodes;
+    if (!nodes || nodes.length === 0) {
+        // Message vide
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", W / 2); t.setAttribute("y", H / 2);
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("fill", "#7a7f9a"); t.setAttribute("font-size", "16");
+        t.setAttribute("font-family", "Inter,system-ui,sans-serif");
+        t.textContent = "Aucun nœud dans cet arbre.";
+        svg.appendChild(t);
+        return;
+    }
 
-    // ── Lignes de connexion ──────────────────────────────────────────────
+    const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+
+    // ── Lignes ──────────────────────────────────────────────────────────────
     const lineGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    lineGroup.setAttribute("class", "lines");
-
     for (const node of nodes) {
-        const requirements = node.requires || [];
-        for (const req of requirements) {
+        for (const req of (node.requires || [])) {
             const parent = byId[req];
             if (!parent) continue;
             const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
             line.setAttribute("x1", parent.position?.x || 0);
             line.setAttribute("y1", parent.position?.y || 0);
-            line.setAttribute("x2", node.position?.x || 0);
-            line.setAttribute("y2", node.position?.y || 0);
+            line.setAttribute("x2", node.position?.x   || 0);
+            line.setAttribute("y2", node.position?.y   || 0);
             line.setAttribute("stroke", node.unlocked && parent.unlocked ? "#3dd68c" : "#2a2d4a");
             line.setAttribute("stroke-width", "3");
             line.setAttribute("stroke-dasharray", node.unlocked ? "none" : "8 5");
@@ -286,7 +572,7 @@ function renderTree(data) {
     }
     svg.appendChild(lineGroup);
 
-    // ── Nœuds ────────────────────────────────────────────────────────────
+    // ── Nœuds ───────────────────────────────────────────────────────────────
     for (const node of nodes) {
         const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
         g.setAttribute("class", "st-node");
@@ -295,13 +581,13 @@ function renderTree(data) {
 
         const color = nodeColor(node);
         const tc    = nodeTextColor(node);
+        const isSel = selected && selected.id === node.id;
 
         // Halo si achetable
         if (node.affordable) {
             const halo = document.createElementNS("http://www.w3.org/2000/svg", "circle");
             halo.setAttribute("r", NODE_R + 6);
             halo.setAttribute("fill", "rgba(245,197,66,.15)");
-            halo.setAttribute("class", "node-halo");
             g.appendChild(halo);
         }
 
@@ -310,21 +596,24 @@ function renderTree(data) {
         circle.setAttribute("r", NODE_R);
         circle.setAttribute("fill", color);
         circle.setAttribute("class", "node-bg");
-        circle.setAttribute("stroke", node === selected ? "#fff" : "none");
+        circle.setAttribute("stroke", isSel ? "#fff" : "none");
         circle.setAttribute("stroke-width", "2.5");
         g.appendChild(circle);
 
-        // Icône (emoji d'état dynamique)
+        // Icône état
         const fo = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
         fo.setAttribute("x", -24); fo.setAttribute("y", -32);
         fo.setAttribute("width", 48); fo.setAttribute("height", 30);
-        fo.innerHTML = `<div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:20px;line-height:1">${node.unlocked ? "✅" : node.affordable ? "💰" : node.can_unlock ? "🔓" : "🔒"}</div>`;
+        fo.innerHTML = `<div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:20px;line-height:1">${
+            node.unlocked ? "✅" : node.affordable ? "💰" : node.can_unlock ? "🔓" : "🔒"
+        }</div>`;
         g.appendChild(fo);
 
-        // Nom (coupé en 2 lignes si nécessaire)
+        // Nom sur 2 lignes
         const words = (node.name || "").split(" ");
         const line1 = words.slice(0, Math.ceil(words.length / 2)).join(" ");
         const line2 = words.slice(Math.ceil(words.length / 2)).join(" ");
+
         const t1 = document.createElementNS("http://www.w3.org/2000/svg", "text");
         t1.setAttribute("text-anchor", "middle");
         t1.setAttribute("y", line2 ? "6" : "12");
@@ -347,62 +636,68 @@ function renderTree(data) {
             g.appendChild(t2);
         }
 
-        // Événement Clic
         g.addEventListener("click", () => selectNode(node));
         svg.appendChild(g);
     }
 }
 
-// ── Sélection nœud ────────────────────────────────────────────────────────
+// ── Sélection nœud ──────────────────────────────────────────────────────────
 function selectNode(node) {
     selected = node;
+
+    // Mettre à jour le stroke du nœud précédemment sélectionné
     document.querySelectorAll(".st-node .node-bg").forEach(c => c.setAttribute("stroke", "none"));
     const el = svg.querySelector(`[data-id="${node.id}"] .node-bg`);
     if (el) el.setAttribute("stroke", "#fff");
 
-    const detail   = document.getElementById("node-detail");
-    const hint     = document.getElementById("node-hint");
+    const detail = document.getElementById("node-detail");
     detail.classList.add("visible");
-    hint.style.display = "none";
+    document.getElementById("node-hint").style.display = "none";
 
     document.getElementById("nd-name").textContent = node.name;
     document.getElementById("nd-desc").textContent = node.description;
 
-    // Gestion robuste du Coût
-    const costEl = document.getElementById("nd-cost");
+    // Badge arbre
+    const treeBadge = document.getElementById("nd-tree-badge");
+    const treeLabel = document.getElementById("nd-tree-label");
+    treeBadge.style.display = "block";
+    treeLabel.textContent   = currentTreeType === "base" ? "🌍 Arbre Base" : "🧙 Arbre Joueur";
+    treeLabel.className     = `tag ${currentTreeType === "base" ? "purple" : "gold"}`;
+
+    // Coût
+    const mats    = treeData?.materials || {};
+    const costEl  = document.getElementById("nd-cost");
     const nodeCost = node.cost || {};
     costEl.innerHTML = Object.entries(nodeCost).map(([mat, qty]) => {
-        // Double détection (gestion clés anglaises et fallback clés françaises)
-        const have = treeData.materials[mat] || treeData.materials[MAT_LABELS[mat]] || 0;
+        const have = mats[mat] || 0;
         const ok   = have >= qty;
-        const displayName = MAT_LABELS[mat] || mat;
         return `<div class="cost-row ${ok ? "ok" : "nok"}">
-            <span>${MAT_ICONS[mat] || "📦"} ${displayName}</span>
+            <span>${MAT_ICONS[mat] || "📦"} ${mat}</span>
             <span>${have} / ${qty} ${ok ? "✓" : "✗"}</span>
         </div>`;
-    }).join("");
+    }).join("") || `<div style="font-size:.85rem;color:var(--muted)">Gratuit</div>`;
 
-    // Gestion robuste des Prérequis
-    const reqEl = document.getElementById("nd-requires");
-    const requirements = node.requires || [];
-    const allNodes = treeData.nodes || [];
-    const unlockedList = treeData.unlocked || [];
-
-    reqEl.innerHTML = requirements.length
-        ? `Requiert : ${requirements.map(r => {
+    // Prérequis
+    const allNodes = currentNodes;
+    const reqEl    = document.getElementById("nd-requires");
+    const reqs     = node.requires || [];
+    reqEl.innerHTML = reqs.length
+        ? `Requiert : ${reqs.map(r => {
             const rn = allNodes.find(n => n.id === r);
-            const ok = unlockedList.includes(r);
+            const ok = rn?.unlocked;
             return `<span style="color:${ok ? "var(--green)" : "var(--red)"}">${rn?.name || r}</span>`;
           }).join(", ")}`
         : "";
 
-    // Bouton Action Dynamique
+    // Action
     const actionEl = document.getElementById("nd-action");
     if (node.unlocked) {
-        actionEl.innerHTML = `<div class="unlocked-badge">✅ Déjà débloqué${node.unlocks ? ` — débloque ${node.unlocks}` : ""}</div>`;
-    } else if (node.affordable) {
+        actionEl.innerHTML = `<div class="unlocked-badge">✅ Déjà débloqué${node.unlocks ? ` — débloque ${WORLD_NAMES[node.unlocks] || node.unlocks}` : ""}</div>`;
+    } else if (node.affordable && (!node.trial_required || node.trial_passed)) {
         actionEl.innerHTML = `<button class="btn-gold" id="btn-unlock">🔓 Débloquer</button>`;
         document.getElementById("btn-unlock").onclick = () => unlock(node.id);
+    } else if (node.trial_required && !node.trial_passed) {
+        actionEl.innerHTML = `<button class="btn-outline" disabled style="width:100%;padding:.7rem;opacity:.5">⚔️ Épreuve requise</button>`;
     } else if (node.can_unlock) {
         actionEl.innerHTML = `<button class="btn-outline" disabled style="width:100%;padding:.7rem;opacity:.5">Pas assez de matériaux</button>`;
     } else {
@@ -410,68 +705,70 @@ function selectNode(node) {
     }
 }
 
-// ── Déblocage ──────────────────────────────────────────────────────────────
+function hideNodeDetail() {
+    document.getElementById("node-detail").classList.remove("visible");
+    document.getElementById("node-hint").style.display = "";
+}
+
+// ── Déblocage ────────────────────────────────────────────────────────────────
 async function unlock(nodeId) {
     try {
-        const res = await api.unlockNode(nodeId);
+        const res = await api.unlockNode(currentWorldId, nodeId, currentTreeType);
         toast(`✅ ${selected.name} débloqué !`, "success");
-        if (res.new_world) toast(`🌍 Nouveau monde débloqué : ${res.new_world} !`, "success");
-        
-        const fresh = await api.getSkillTree();
-        renderSidebar(fresh);
-        renderTree(fresh);
-        
-        const updatedNode = (fresh.nodes || []).find(n => n.id === nodeId);
+
+        if (res.new_world) {
+            toast(`🌍 Nouveau monde débloqué : ${WORLD_NAMES[res.new_world] || res.new_world} !`, "success");
+            if (!unlockedWorlds.includes(res.new_world)) {
+                unlockedWorlds.push(res.new_world);
+                renderWorldSelector();
+            }
+        }
+
+        // Rechargement des données du monde actuel
+        await loadWorld(currentWorldId);
+
+        // Re-sélectionner le nœud pour mettre à jour l'état
+        const updatedNode = currentNodes.find(n => n.id === nodeId);
         if (updatedNode) selectNode(updatedNode);
+
     } catch(e) {
         toast(e.message, "error");
     }
 }
 
-// ── Sidebar ────────────────────────────────────────────────────────────────
+// ── Sidebar matériaux ────────────────────────────────────────────────────────
 function renderSidebar(data) {
-    // Matériaux
     const matEl = document.getElementById("mat-list");
-    const mats  = data && data.materials ? data.materials : {};
-    
-    // On s'assure qu'on liste au moins un truc si le joueur récolte
+    const mats  = data?.materials || {};
     const hasMat = Object.values(mats).some(v => v > 0);
+
     if (!hasMat) {
-        matEl.innerHTML = `<div style="font-size:.85rem;color:var(--muted)">Aucun matériau — <a href="oneblock.html">va miner →</a></div>`;
+        matEl.innerHTML = `<div style="font-size:.85rem;color:var(--muted)">Aucun matériau — <a href="cliqueur.html">va miner →</a></div>`;
     } else {
         matEl.innerHTML = Object.entries(MAT_ICONS).map(([key, icon]) => {
-            const qty = mats[key] || mats[MAT_LABELS[key]] || 0;
-            return `
-            <div class="mat-row">
-                <span>${icon} ${MAT_LABELS[key] || key}</span>
+            const qty = mats[key] || 0;
+            return `<div class="mat-row">
+                <span>${icon} ${key}</span>
                 <span class="qty">${qty}</span>
             </div>`;
         }).join("");
     }
-
-    // Mondes Débloqués (.filter sécurisé avec '|| []' pour éradiquer l'erreur)
-    const worldEl = document.getElementById("worlds-list");
-    const nodesList = data && data.nodes ? data.nodes : [];
-    const unlockedWorlds = nodesList.filter(n => n && n.unlocked && n.unlocks).map(n => n.unlocks);
-    
-    const allWorlds = { monde_1: "La Forêt des Débuts", monde_2: "Les Plaines de Feu", monde_3: "L'Océan Profond", monde_4: "Le Sommet des Dieux" };
-    worldEl.innerHTML = Object.entries(allWorlds).map(([id, name]) => {
-        const isUnlocked = id === "monde_1" || unlockedWorlds.includes(id);
-        return `<div style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;font-size:.85rem;color:${isUnlocked ? "var(--green)" : "var(--muted)"}">
-            ${WORLD_ICONS[id] || "🌍"} ${name} ${isUnlocked ? "✓" : "🔒"}
-        </div>`;
-    }).join("");
 }
 
-// ── Init ───────────────────────────────────────────────────────────────────
+// ── Init ─────────────────────────────────────────────────────────────────────
 async function init() {
-    const [data, profile] = await Promise.all([api.getSkillTree(), api.getProfile()]);
+    const profile = await api.getProfile();
     window.__profile = profile;
     await loadNavUser();
 
-    renderSidebar(data);
-    renderTree(data);
-    setInitialView();
+    // Récupérer la liste des mondes débloqués depuis le profil
+    unlockedWorlds = profile.unlocked_worlds || ["monde_1"];
+
+    // Rendre le sélecteur de monde avec les bons états
+    renderWorldSelector();
+
+    // Charger l'arbre du monde 1 par défaut
+    await loadWorld("monde_1");
 }
 
 window.addEventListener("resize", setInitialView);
