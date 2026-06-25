@@ -199,7 +199,7 @@ async function init() {
     const messagePct = Math.round((messagePoints / maxPts) * 100);
 
     // Normalisation des clés pour les dictionnaires
-    const raceKey = profile.race ? profile.race.toLowerCase() : "";
+    const raceKey = profile.race_id ? profile.race_id.toLowerCase() : "";
 
     // Données de la race actuelle du joueur
     const currentRace = RACES_INFO[raceKey] || null;
