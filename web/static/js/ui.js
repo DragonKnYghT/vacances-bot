@@ -11,7 +11,7 @@ export function renderNav(activePage = "") {
     nav.innerHTML = `
         <span class="logo">🏰 Serveur Vacances</span>
         <a href="profile.html" ${activePage === "profile" ? 'class="active"' : ""}>Profil</a>
-        <a href="oneblock.html" ${activePage === "oneblock" ? 'class="active"' : ""}>⛏️ One Bloc</a>
+        <a href="cliqueur.html" ${activePage === "cliqueur" ? 'class="active"' : ""}>⛏️ Cliqueur</a>
         <a href="shop.html"    ${activePage === "shop"    ? 'class="active"' : ""}>Boutique</a>
         <a href="skilltree.html" ${activePage === "skilltree" ? 'class="active"' : ""}>Skill Tree</a>
         <a href="pixelmap.html"  ${activePage === "pixelmap"  ? 'class="active"' : ""}>Pixel Map</a>
