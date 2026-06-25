@@ -800,6 +800,117 @@ def equip_item():
 # Routes Skill Tree (Avec système d'épreuves Rythme OSU & Test Your Might)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@app.route("/api/skilltree/<world_id>")
+@require_auth
+def get_skilltree_world(world_id):
+    """Route multi-mondes : renvoie base_tree + player_tree pour un monde donné.
+    Pour l'instant tous les mondes partagent le même arbre global.
+    Cette architecture permet une migration future par monde sans casser le front."""
+    doc = get_user_doc(request.user_id)
+    unlocked = doc.get("unlocked_nodes", [])
+    materials = doc.get("materials", {})
+    completed_trials = doc.get("completed_trials", [])
+    unlocked_worlds = doc.get("unlocked_worlds", ["monde_1"])
+
+    if world_id not in WORLDS:
+        return jsonify({"error": "Monde inconnu"}), 404
+    if world_id not in unlocked_worlds:
+        return jsonify({"error": "Monde non débloqué"}), 403
+
+    # Calcul arbre base
+    base_nodes = []
+    for key, node in SKILL_TREE_BASE.items():
+        can_unlock = all(r in unlocked for r in node["requires"])
+        affordable = all(materials.get(mat, 0) >= qty for mat, qty in node["cost"].items())
+        trial_done = node["trial"] is None or key in completed_trials
+        base_nodes.append({
+            "id": key, "name": node["name"], "description": node["description"],
+            "cost": node["cost"], "requires": node["requires"], "position": node["position"],
+            "unlocked": key in unlocked,
+            "can_unlock": can_unlock and key not in unlocked,
+            "affordable": affordable and can_unlock and key not in unlocked,
+            "trial_required": node["trial"], "trial_passed": trial_done,
+            "unlocks": node.get("unlocks"),
+        })
+
+    # Calcul arbre joueur
+    player_nodes = []
+    for key, node in SKILL_TREE_PLAYER.items():
+        can_unlock = all(r in unlocked for r in node["requires"])
+        affordable = all(materials.get(mat, 0) >= qty for mat, qty in node["cost"].items())
+        trial_done = node["trial"] is None or key in completed_trials
+        player_nodes.append({
+            "id": key, "name": node["name"], "description": node["description"],
+            "cost": node["cost"], "requires": node["requires"], "position": node["position"],
+            "unlocked": key in unlocked,
+            "can_unlock": can_unlock and key not in unlocked,
+            "affordable": affordable and can_unlock and key not in unlocked,
+            "trial_required": node["trial"], "trial_passed": trial_done,
+        })
+
+    # Progression monde
+    base_done      = sum(1 for n in base_nodes if n["unlocked"])
+    world_completed = base_done == len(base_nodes) and len(base_nodes) > 0
+    world_list     = list(WORLDS.keys())
+    world_idx      = world_list.index(world_id) if world_id in world_list else -1
+    next_world     = world_list[world_idx + 1] if world_idx >= 0 and world_idx + 1 < len(world_list) else None
+
+    return jsonify({
+        "world_id": world_id,
+        "world_name": WORLDS[world_id]["name"],
+        "nodes": base_nodes + player_nodes,
+        "base_tree": base_nodes,
+        "player_tree": player_nodes,
+        "unlocked": unlocked,
+        "materials": materials,
+        "world_completed": world_completed,
+        "next_world": next_world,
+        "next_world_unlocked": next_world in unlocked_worlds if next_world else False,
+    })
+
+
+@app.route("/api/skilltree/<world_id>/unlock", methods=["POST"])
+@require_auth
+def unlock_node_world(world_id):
+    """Déblocage d'un nœud pour un monde donné (supporte tree = 'base' | 'player')."""
+    if world_id not in WORLDS:
+        return jsonify({"error": "Monde inconnu"}), 404
+
+    data     = request.get_json()
+    node_key = data.get("node")
+    tree     = data.get("tree", "base")
+
+    if node_key not in SKILL_TREE:
+        return jsonify({"error": "Nœud inconnu"}), 404
+
+    node     = SKILL_TREE[node_key]
+    doc      = get_user_doc(request.user_id)
+    unlocked = doc.get("unlocked_nodes", [])
+    materials = doc.get("materials", {})
+    completed_trials = doc.get("completed_trials", [])
+
+    if node_key in unlocked:
+        return jsonify({"error": "Déjà débloqué"}), 400
+    if not all(r in unlocked for r in node["requires"]):
+        return jsonify({"error": "Prérequis manquants"}), 400
+    if node.get("trial") and node_key not in completed_trials:
+        return jsonify({"error": "Tu dois réussir l'épreuve de ce nœud avant !"}), 400
+    for mat, qty in node["cost"].items():
+        if materials.get(mat, 0) < qty:
+            return jsonify({"error": f"Pas assez de {mat}"}), 400
+
+    inc = {f"materials.{mat}": -qty for mat, qty in node["cost"].items()}
+    update = {"$inc": inc, "$push": {"unlocked_nodes": node_key}}
+
+    new_world = None
+    if "unlocks" in node:
+        update["$addToSet"] = {"unlocked_worlds": node["unlocks"]}
+        new_world = node["unlocks"]
+
+    db.users.update_one({"user_id": request.user_id}, update)
+    return jsonify({"ok": True, "unlocked": node_key, "new_world": new_world})
+
+
 @app.route("/api/skilltree")
 @require_auth
 def get_skilltree():
