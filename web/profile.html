@@ -216,7 +216,7 @@ async function init() {
                     <h1>${profile.global_name || profile.username || "Joueur"}</h1>
                     <div class="meta">
                         <span>🏅 Rang #${profile.rank ?? "?"}</span>
-                        <span>💠 ${fmt(profile.total_points)} pts total</span>
+                        <span title="Points disponibles à dépenser (hors dépenses passées)">💠 ${fmt(profile.total_points)} pts disponibles</span>
                         ${profile.race && profile.race !== "Aucune" ? `<span class="tag gold">${RACE_ICONS[raceKey] || "🧬"} ${profile.race}</span>` : '<span class="tag">Aucune race</span>'}
                         ${classeName ? `<span class="tag purple">${classeName}</span>` : '<span class="tag">Aucune classe</span>'}
                         <span>🎨 ${profile.pixels_remaining ?? 0} pixels restants</span>
