@@ -114,11 +114,15 @@ export const api = {
         body: JSON.stringify({ node_id: nodeId })
     }),
 
-    // Skill Tree & Pixel Map (Garder tes fonctions de base)
-    getSkillTree:    ()           => apiFetch("/api/skilltree"),
-    unlockNode:      (node)       => apiFetch("/api/skilltree/unlock", {
+    // Skill Tree (par monde, 2 arbres : base + player)
+    getSkillTree:    (world)      => apiFetch(`/api/skilltree/${world}`),
+    unlockNode:      (world, node, tree) => apiFetch(`/api/skilltree/${world}/unlock`, {
         method: "POST",
-        body: JSON.stringify({ node }),
+        body: JSON.stringify({ node, tree }),
+    }),
+    completeTrial:   (node, success) => apiFetch("/api/skilltree/trial/complete", {
+        method: "POST",
+        body: JSON.stringify({ node, success }),
     }),
     getPixelMap:     (world)      => apiFetch(`/api/pixelmap/${world}`),
     placePixel:      (world, x, y, color) => apiFetch(`/api/pixelmap/${world}/place`, {
