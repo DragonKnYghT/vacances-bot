@@ -7,6 +7,14 @@ import { isLoggedIn, logout, getToken, discordAvatar } from "./api.js";
 // ── Nav ───────────────────────────────────────────────────────────────────
 
 export function renderNav(activePage = "") {
+    // Injection Easter Eggs (#13) sur toutes les pages
+    if (!document.getElementById("ee-script")) {
+        const s = document.createElement("script");
+        s.id  = "ee-script";
+        s.src = "static/js/easter-eggs.js";
+        document.head.appendChild(s);
+    }
+
     const nav = document.createElement("nav");
     nav.innerHTML = `
         <span class="logo">🏰 Serveur Vacances</span>
