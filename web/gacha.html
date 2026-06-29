@@ -137,6 +137,25 @@
 
     <div class="rarity-table" id="rarity-table"></div>
 
+    <!-- Compteur de pitié (#10) -->
+    <div class="card" style="margin-bottom:1.5rem;padding:1rem 1.4rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem">
+            <div>
+                <div style="font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:.3rem">🎯 Système de Pitié</div>
+                <div style="font-size:.9rem" id="pity-text">Chargement...</div>
+            </div>
+            <div style="min-width:180px">
+                <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted);margin-bottom:.3rem">
+                    <span>Soft pity</span><span id="pity-count">0 / 200</span>
+                </div>
+                <div style="height:8px;background:var(--bg3);border-radius:99px;overflow:hidden">
+                    <div id="pity-bar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--gold));border-radius:99px;width:0%;transition:width .4s"></div>
+                </div>
+                <div style="font-size:.72rem;color:var(--muted);margin-top:.25rem" id="pity-hard-label">Hard pity à 200 tirages</div>
+            </div>
+        </div>
+    </div>
+
     <div class="tickets-bar">
         <div class="ticket-badge">
             <span class="tb-icon">🎫</span>
@@ -461,9 +480,10 @@ window.claimQuest = async function() {
 
 // ── Init ──────────────────────────────────────────────────────────────────
 async function loadInfo() {
-    const [info, profile] = await Promise.all([
+    const [info, profile, pityData] = await Promise.all([
         apiFetch("/api/gacha/info"),
         apiFetch("/api/profile"),
+        apiFetch("/api/gacha/pity/status").catch(() => ({pity: {total_pulls:0, bonus_chance:0}})),
     ]);
     window.__profile = profile;
     await loadNavUser();
@@ -475,6 +495,22 @@ async function loadInfo() {
     const race = info.current_race;
     document.getElementById("current-classe").textContent = cls  || "Aucune";
     document.getElementById("current-race").textContent   = race || "Aucune";
+
+    // Affichage pitié (#10)
+    const p = pityData.pity || {};
+    const pulls = p.total_pulls || 0;
+    const bonus = p.bonus_chance || 0;
+    const toHard = Math.max(0, 200 - pulls);
+    const softActive = pulls >= 10;
+    document.getElementById("pity-count").textContent = `${pulls} / 200`;
+    document.getElementById("pity-bar").style.width = Math.min(100, pulls / 200 * 100) + "%";
+    document.getElementById("pity-text").innerHTML = softActive
+        ? `<span style="color:var(--gold)">Soft pity actif !</span> Légendaire : <strong>${(3 + bonus).toFixed(0)}%</strong> (+${bonus}% bonus)`
+        : `Légendaire de base : <strong>3%</strong> — Soft pity après <strong>${10 - pulls}</strong> tirages`;
+    document.getElementById("pity-hard-label").textContent = toHard > 0
+        ? `Hard pity (légendaire garanti) dans ${toHard} tirage${toHard !== 1 ? "s" : ""}`
+        : `🎉 Hard pity atteint — légendaire garanti au prochain tirage !`;
+    if (toHard === 0) document.getElementById("pity-hard-label").style.color = "var(--gold)";
 }
 
 loadInfo();
