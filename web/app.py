@@ -409,11 +409,14 @@ def auth_callback():
     discord_user = user_resp.json()
     user_id = discord_user["id"]
 
+    is_new_user = db.users.find_one({"user_id": user_id}) is None
+
     db.users.update_one(
         {"user_id": user_id},
         {"$set": {
-            "username": discord_user["username"],
-            "avatar": discord_user.get("avatar"),
+            "username": discord_user.get("global_name") or discord_user["username"],
+            "username_raw": discord_user["username"],
+            "avatar": discord_user.get("avatar"),   # hash brut — l'URL est construite côté front avec discordAvatar()
             "global_name": discord_user.get("global_name"),
             "last_login": datetime.utcnow(),
         }},
@@ -421,9 +424,11 @@ def auth_callback():
     )
     get_user_doc(user_id)
 
-    token = make_jwt(user_id, discord_token)
+    token    = make_jwt(user_id, discord_token)
     site_url = os.environ.get("SITE_URL", "https://DragonKnYghT.github.io/vacances-bot")
-    return redirect(f"{site_url}/callback.html?token={token}")
+    # Première connexion → intro, sinon callback normal
+    dest = "intro.html" if is_new_user else "callback.html"
+    return redirect(f"{site_url}/{dest}?token={token}")
 
 @app.route("/auth/me")
 @require_auth
@@ -453,10 +458,8 @@ def get_profile():
 
     vocal = doc.get("vocal_points", 0)
     messages = doc.get("message_points", 0)
-    minigames = doc.get("minigame_points", 0)
-    activity = doc.get("activity_points", 0)
-    
-    doc["total_points"] = vocal + messages + minigames + activity
+    # activity_points et minigame_points supprimés du total affiché (tâche #1)
+    doc["total_points"] = vocal + messages
 
     # Résout l'id stocké (ex: "soldat") vers le nom affichable + bonus,
     # en cherchant dans les pools du Gacha (classe/race obtenues par tirage).
@@ -619,12 +622,9 @@ def get_shop():
     doc = get_user_doc(request.user_id)
     total_points = (
         doc.get("vocal_points", 0) +
-        doc.get("message_points", 0) +
-        doc.get("minigame_points", 0) +
-        doc.get("activity_points", 0)
+        doc.get("message_points", 0)
     )
     available = max(0, total_points - doc.get("spent_points", 0))
-    items = []
     for key, item in SHOP_ITEMS.items():
         discounted = apply_class_discount(doc, key, item["price"])
         items.append({
@@ -652,9 +652,7 @@ def buy_item():
     price = apply_class_discount(doc, item_key, SHOP_ITEMS[item_key]["price"]) * qty
     total_points = (
         doc.get("vocal_points", 0) +
-        doc.get("message_points", 0) +
-        doc.get("minigame_points", 0) +
-        doc.get("activity_points", 0)
+        doc.get("message_points", 0)
     )
     available = max(0, total_points - doc.get("spent_points", 0))
 
@@ -799,117 +797,6 @@ def equip_item():
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes Skill Tree (Avec système d'épreuves Rythme OSU & Test Your Might)
 # ─────────────────────────────────────────────────────────────────────────────
-
-@app.route("/api/skilltree/<world_id>")
-@require_auth
-def get_skilltree_world(world_id):
-    """Route multi-mondes : renvoie base_tree + player_tree pour un monde donné.
-    Pour l'instant tous les mondes partagent le même arbre global.
-    Cette architecture permet une migration future par monde sans casser le front."""
-    doc = get_user_doc(request.user_id)
-    unlocked = doc.get("unlocked_nodes", [])
-    materials = doc.get("materials", {})
-    completed_trials = doc.get("completed_trials", [])
-    unlocked_worlds = doc.get("unlocked_worlds", ["monde_1"])
-
-    if world_id not in WORLDS:
-        return jsonify({"error": "Monde inconnu"}), 404
-    if world_id not in unlocked_worlds:
-        return jsonify({"error": "Monde non débloqué"}), 403
-
-    # Calcul arbre base
-    base_nodes = []
-    for key, node in SKILL_TREE_BASE.items():
-        can_unlock = all(r in unlocked for r in node["requires"])
-        affordable = all(materials.get(mat, 0) >= qty for mat, qty in node["cost"].items())
-        trial_done = node["trial"] is None or key in completed_trials
-        base_nodes.append({
-            "id": key, "name": node["name"], "description": node["description"],
-            "cost": node["cost"], "requires": node["requires"], "position": node["position"],
-            "unlocked": key in unlocked,
-            "can_unlock": can_unlock and key not in unlocked,
-            "affordable": affordable and can_unlock and key not in unlocked,
-            "trial_required": node["trial"], "trial_passed": trial_done,
-            "unlocks": node.get("unlocks"),
-        })
-
-    # Calcul arbre joueur
-    player_nodes = []
-    for key, node in SKILL_TREE_PLAYER.items():
-        can_unlock = all(r in unlocked for r in node["requires"])
-        affordable = all(materials.get(mat, 0) >= qty for mat, qty in node["cost"].items())
-        trial_done = node["trial"] is None or key in completed_trials
-        player_nodes.append({
-            "id": key, "name": node["name"], "description": node["description"],
-            "cost": node["cost"], "requires": node["requires"], "position": node["position"],
-            "unlocked": key in unlocked,
-            "can_unlock": can_unlock and key not in unlocked,
-            "affordable": affordable and can_unlock and key not in unlocked,
-            "trial_required": node["trial"], "trial_passed": trial_done,
-        })
-
-    # Progression monde
-    base_done      = sum(1 for n in base_nodes if n["unlocked"])
-    world_completed = base_done == len(base_nodes) and len(base_nodes) > 0
-    world_list     = list(WORLDS.keys())
-    world_idx      = world_list.index(world_id) if world_id in world_list else -1
-    next_world     = world_list[world_idx + 1] if world_idx >= 0 and world_idx + 1 < len(world_list) else None
-
-    return jsonify({
-        "world_id": world_id,
-        "world_name": WORLDS[world_id]["name"],
-        "nodes": base_nodes + player_nodes,
-        "base_tree": base_nodes,
-        "player_tree": player_nodes,
-        "unlocked": unlocked,
-        "materials": materials,
-        "world_completed": world_completed,
-        "next_world": next_world,
-        "next_world_unlocked": next_world in unlocked_worlds if next_world else False,
-    })
-
-
-@app.route("/api/skilltree/<world_id>/unlock", methods=["POST"])
-@require_auth
-def unlock_node_world(world_id):
-    """Déblocage d'un nœud pour un monde donné (supporte tree = 'base' | 'player')."""
-    if world_id not in WORLDS:
-        return jsonify({"error": "Monde inconnu"}), 404
-
-    data     = request.get_json()
-    node_key = data.get("node")
-    tree     = data.get("tree", "base")
-
-    if node_key not in SKILL_TREE:
-        return jsonify({"error": "Nœud inconnu"}), 404
-
-    node     = SKILL_TREE[node_key]
-    doc      = get_user_doc(request.user_id)
-    unlocked = doc.get("unlocked_nodes", [])
-    materials = doc.get("materials", {})
-    completed_trials = doc.get("completed_trials", [])
-
-    if node_key in unlocked:
-        return jsonify({"error": "Déjà débloqué"}), 400
-    if not all(r in unlocked for r in node["requires"]):
-        return jsonify({"error": "Prérequis manquants"}), 400
-    if node.get("trial") and node_key not in completed_trials:
-        return jsonify({"error": "Tu dois réussir l'épreuve de ce nœud avant !"}), 400
-    for mat, qty in node["cost"].items():
-        if materials.get(mat, 0) < qty:
-            return jsonify({"error": f"Pas assez de {mat}"}), 400
-
-    inc = {f"materials.{mat}": -qty for mat, qty in node["cost"].items()}
-    update = {"$inc": inc, "$push": {"unlocked_nodes": node_key}}
-
-    new_world = None
-    if "unlocks" in node:
-        update["$addToSet"] = {"unlocked_worlds": node["unlocks"]}
-        new_world = node["unlocks"]
-
-    db.users.update_one({"user_id": request.user_id}, update)
-    return jsonify({"ok": True, "unlocked": node_key, "new_world": new_world})
-
 
 @app.route("/api/skilltree")
 @require_auth
@@ -1085,8 +972,10 @@ def place_pixel(world_id):
 
 @app.route("/api/pixel/invite", methods=["POST"])
 @require_auth
+@require_auth
 def invite_to_pixel_zone():
-    """Système d'invitation au pixel : Permet d'envoyer une notification/coordonnée à un autre joueur."""
+    """Système d'invitation au pixel : envoie une notification à un autre joueur."""
+    doc = get_user_doc(request.user_id)
     data = request.get_json()
     target_username = data.get("target_username")
     world_id = data.get("world_id")
@@ -1097,12 +986,12 @@ def invite_to_pixel_zone():
     if not target_user:
         return jsonify({"error": "Joueur introuvable sur le serveur."}), 404
 
-    # Enregistrement de l'invitation pour le destinataire
     invitation = {
         "from": doc.get("username", "Un Gardien"),
+        "from_id": request.user_id,
         "world_id": world_id,
         "coords": f"[{x}, {y}]",
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.utcnow().isoformat()
     }
     
     db.users.update_one(
@@ -1110,6 +999,29 @@ def invite_to_pixel_zone():
         {"$push": {"pixel_invitations": invitation}}
     )
     return jsonify({"ok": True, "message": f"Invitation envoyée à {target_username} !"})
+
+
+@app.route("/api/pixel/invitations")
+@require_auth
+def get_pixel_invitations():
+    """Récupère les invitations pixel en attente pour l'utilisateur connecté."""
+    doc = get_user_doc(request.user_id)
+    invitations = doc.get("pixel_invitations", [])[-10:]  # 10 dernières
+    return jsonify({"invitations": invitations})
+
+
+@app.route("/api/admin/cleanup-anonymous", methods=["POST"])
+@require_auth
+def cleanup_anonymous():
+    """#3 Supprime les profils anonymes de test de la BDD."""
+    result = db.users.delete_many({
+        "$or": [
+            {"username": "Joueur Anonyme"},
+            {"username": {"$regex": "^Anonyme"}},
+            {"user_id": {"$not": {"$regex": "^[0-9]+$"}}}
+        ]
+    })
+    return jsonify({"ok": True, "deleted": result.deleted_count})
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes Classes & Choix Originel
@@ -1230,21 +1142,22 @@ def pull_gacha():
     pity_data = doc.get("gacha_pity", {"total_pulls": 0, "current_step": 0, "bonus_chance": 0.0})
     total_pulls = pity_data.get("total_pulls", 0) + 1
     
-    # Calcul de l'étape de pitié (Tous les 20 tirages, on monte de 5% de chance)
-    current_step = total_pulls // 20
+    # SOFT PITY : dès 10 tirages sans légendaire, +5% tous les 10 tirages (max +50% à 110 tirages)
+    current_step = total_pulls // 10
     if current_step > 10: current_step = 10
-    bonus_chance = current_step * 5.0 # Max +50% de chance au bout des 10 étapes (200 tirages)
+    bonus_chance = current_step * 5.0
 
-    # Base de chance : Légendaire = 3% + bonus de pitié
+    # HARD PITY : à 200 tirages, légendaire garanti (100%)
+    hard_pity_triggered = total_pulls >= 200
+
     roll = _random.uniform(0, 100)
     legendary_threshold = 3.0 + bonus_chance
     
     pool = GACHA_CLASSES if pull_type == "classe" else GACHA_RACES
     
-    # Détermination de la rareté obtenue
-    if roll <= legendary_threshold:
+    if hard_pity_triggered or roll <= legendary_threshold:
         gained_rarity = "legendaire"
-        # Reset de la pitié suite à l'obtention d'un légendaire
+        # Reset pitié après légendaire
         total_pulls = 0
         current_step = 0
         bonus_chance = 0.0
@@ -1280,7 +1193,12 @@ def pull_gacha():
     return jsonify({
         "ok": True,
         "reward": reward,
-        "pity": {"total_pulls": total_pulls, "current_step": current_step, "bonus_chance": bonus_chance}
+        "pity": {
+            "total_pulls": total_pulls,
+            "current_step": current_step,
+            "bonus_chance": bonus_chance,
+            "hard_pity_triggered": hard_pity_triggered if 'hard_pity_triggered' in dir() else False
+        }
     })
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1412,6 +1330,83 @@ def check_code():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Easter Eggs (#13)
+# ─────────────────────────────────────────────────────────────────────────────
+
+EGG_REWARDS = {
+    "konami":      {"bois": 5},
+    "logo10":      {"pierre": 3},
+    "idle30":      {"fer": 2},
+    "vacances":    {"magie": 5},
+    "tripleimg":   {"pierre": 4},
+    "devtools":    {"cristal": 3},
+    "selectname":  {"magie": 2},
+    "scrollbottom":{"bois": 3},
+}
+
+@app.route("/api/easter-egg/claim", methods=["POST"])
+@require_auth
+def claim_easter_egg():
+    data   = request.get_json()
+    egg_id = data.get("egg_id")
+    if egg_id not in EGG_REWARDS:
+        return jsonify({"error": "Easter egg inconnu"}), 404
+
+    doc = get_user_doc(request.user_id)
+    already_found = doc.get("found_eggs", [])
+    if egg_id in already_found:
+        return jsonify({"ok": True, "already_found": True})
+
+    reward = EGG_REWARDS[egg_id]
+    inc = {f"materials.{mat}": qty for mat, qty in reward.items()}
+    db.users.update_one(
+        {"user_id": request.user_id},
+        {"$inc": inc, "$push": {"found_eggs": egg_id}}
+    )
+    return jsonify({"ok": True, "reward": reward})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Marchand — Vente de matériaux (#5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+SELL_PRICES = {"bois": 4, "pierre": 5, "fer": 12, "cristal": 30, "magie": 50}
+
+@app.route("/api/merchant/sell", methods=["POST"])
+@require_auth
+def merchant_sell():
+    data = request.get_json()
+    item = data.get("item")
+    qty  = int(data.get("quantity", 1))
+
+    if item not in SELL_PRICES:
+        return jsonify({"error": "Matériau non vendable"}), 400
+    if qty < 1:
+        return jsonify({"error": "Quantité invalide"}), 400
+
+    doc = get_user_doc(request.user_id)
+    stock = doc.get("materials", {}).get(item, 0)
+    if stock < qty:
+        return jsonify({"error": f"Tu n'as que {stock}× {item}"}), 400
+
+    earned = SELL_PRICES[item] * qty
+    db.users.update_one(
+        {"user_id": request.user_id},
+        {
+            "$inc": {
+                f"materials.{item}": -qty,
+                "vocal_points": earned   # on ajoute aux points vocal (comptent pour le total)
+            }
+        }
+    )
+    total = (doc.get("vocal_points", 0) + earned +
+             doc.get("message_points", 0) -
+             doc.get("spent_points", 0))
+    return jsonify({"ok": True, "earned": earned, "remaining_points": max(0, total)})
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
