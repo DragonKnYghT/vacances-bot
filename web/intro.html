@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bienvenue — Serveur Vacances</title>
+    <link rel="stylesheet" href="static/css/global.css">
+    <style>
+        * { box-sizing: border-box; }
+        body { overflow: hidden; background: #000; }
+
+        /* ── Scène ── */
+        #scene {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            position: relative;
+            background: radial-gradient(ellipse at 50% 30%, #1a0a2e 0%, #000 70%);
+        }
+
+        /* ── Fond animé étoiles ── */
+        #stars {
+            position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+        }
+        .star {
+            position: absolute;
+            border-radius: 50%;
+            background: #fff;
+            animation: twinkle var(--d) infinite alternate;
+            opacity: 0;
+        }
+        @keyframes twinkle {
+            from { opacity: 0; transform: scale(.6); }
+            to   { opacity: 1; transform: scale(1.2); }
+        }
+
+        /* ── Personnage (emoji géant) ── */
+        #character {
+            position: absolute;
+            bottom: 180px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 100px;
+            filter: drop-shadow(0 0 40px rgba(124,92,252,.6));
+            transition: transform .3s ease, opacity .5s;
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%,100% { transform: translateX(-50%) translateY(0); }
+            50%      { transform: translateX(-50%) translateY(-12px); }
+        }
+
+        /* ── Boîte de dialogue ── */
+        #dialog-box {
+            width: 100%;
+            max-width: 780px;
+            background: rgba(14, 15, 26, .92);
+            border: 1.5px solid #7c5cfc;
+            border-radius: 18px 18px 0 0;
+            padding: 1.5rem 2rem 2rem;
+            position: relative;
+            z-index: 10;
+            box-shadow: 0 -8px 40px rgba(124,92,252,.25);
+            margin: 0 auto;
+        }
+
+        #speaker {
+            font-size: .8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .1em;
+            color: #7c5cfc;
+            margin-bottom: .5rem;
+        }
+
+        #dialog-text {
+            font-size: 1.1rem;
+            line-height: 1.7;
+            color: #e2e4f0;
+            min-height: 80px;
+        }
+
+        #dialog-text .cursor {
+            display: inline-block;
+            width: 2px; height: 1.1em;
+            background: #7c5cfc;
+            animation: blink .6s infinite;
+            vertical-align: text-bottom;
+            margin-left: 2px;
+        }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+        #continue-hint {
+            text-align: right;
+            font-size: .8rem;
+            color: #7a7f9a;
+            margin-top: .75rem;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+
+        /* ── Barre de progression ── */
+        #progress-bar {
+            position: absolute;
+            top: 0; left: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #7c5cfc, #3dd68c);
+            border-radius: 99px;
+            transition: width .4s ease;
+        }
+
+        /* ── Choix ── */
+        #choices {
+            display: none;
+            flex-direction: column;
+            gap: .6rem;
+            margin-top: 1rem;
+        }
+        .choice-btn {
+            background: rgba(124,92,252,.1);
+            border: 1.5px solid #7c5cfc;
+            border-radius: 10px;
+            color: #e2e4f0;
+            padding: .7rem 1.2rem;
+            text-align: left;
+            font-size: .95rem;
+            cursor: pointer;
+            transition: background .15s, transform .1s;
+        }
+        .choice-btn:hover { background: rgba(124,92,252,.25); transform: translateX(4px); }
+
+        /* ── Écran de fin ── */
+        #end-screen {
+            display: none;
+            position: fixed; inset: 0;
+            background: #000;
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+            text-align: center;
+            padding: 2rem;
+        }
+        #end-screen h1 { font-size: 2.5rem; font-weight: 900; }
+        #end-screen p  { color: #7a7f9a; font-size: 1rem; max-width: 400px; }
+
+        /* Overlay de skip */
+        #skip-btn {
+            position: fixed;
+            top: 1rem; right: 1rem;
+            background: rgba(255,255,255,.06);
+            border: 1px solid rgba(255,255,255,.12);
+            color: #7a7f9a;
+            border-radius: 8px;
+            padding: .35rem .8rem;
+            font-size: .8rem;
+            cursor: pointer;
+            z-index: 50;
+        }
+        #skip-btn:hover { color: #e2e4f0; border-color: #e2e4f0; }
+    </style>
+</head>
+<body>
+
+<button id="skip-btn">Passer l'intro ⏭</button>
+
+<div id="scene">
+    <div id="stars"></div>
+    <div id="character">🧙</div>
+
+    <div id="dialog-box">
+        <div id="progress-bar" style="width:0%"></div>
+        <div id="speaker">???</div>
+        <div id="dialog-text"><span class="cursor"></span></div>
+        <div id="continue-hint">Cliquer ou Espace pour continuer ▶</div>
+        <div id="choices"></div>
+    </div>
+</div>
+
+<div id="end-screen">
+    <div style="font-size:4rem">🌲</div>
+    <h1>Bienvenue, <span id="end-username">Gardien</span> !</h1>
+    <p>Ton aventure commence maintenant. Explore les mondes, mine des ressources, affronte les boss et écris ta légende.</p>
+    <button class="btn-primary" style="padding:.8rem 2rem;font-size:1rem" id="btn-start">Commencer l'aventure →</button>
+</div>
+
+<script type="module">
+import { api } from "./static/js/api.js";
+import { requireAuth } from "./static/js/ui.js";
+
+if (!requireAuth()) throw new Error("not auth");
+
+// ── Étoiles ─────────────────────────────────────────────────────────────────
+const starsEl = document.getElementById("stars");
+for (let i = 0; i < 80; i++) {
+    const s = document.createElement("div");
+    s.className = "star";
+    const size = Math.random() * 3 + 1;
+    s.style.cssText = `
+        width:${size}px;height:${size}px;
+        left:${Math.random()*100}%;top:${Math.random()*70}%;
+        --d:${(Math.random()*2+1).toFixed(1)}s;
+        animation-delay:${(Math.random()*2).toFixed(1)}s;
+    `;
+    starsEl.appendChild(s);
+}
+
+// ── Script de l'histoire ─────────────────────────────────────────────────────
+const SCENES = [
+    { speaker: "???",         emoji: "🧙", text: "...Tu entends quelque chose ?" },
+    { speaker: "???",         emoji: "🧙", text: "Une voix. Lointaine. Comme un écho venu d'un autre monde." },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Réveille-toi, voyageur. Le Nexus t'a choisi." },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Notre serveur… notre monde… est en train de se fragmenter. Les anciens mondes se referment un à un." },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Des Boss corrompus gardent chaque passage. Ils ont volé l'énergie qui maintenait tout en équilibre." },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Tu es l'un des rares capables de voyager entre les fragments. Un Gardien du Nexus." },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Mais pour ça, tu auras besoin d'outils. De ressources. De compétences." },
+    { speaker: "Toi",         emoji: "🧑", text: "Comment je suis censé faire tout ça ?" },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Le Cliqueur te donnera de quoi construire. L'Arbre des Compétences te rendra plus fort." },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Le Gacha décidera de ta Classe et de ta Race. Et tes points du serveur Discord financeront ton voyage." },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Les autres membres du serveur peuvent t'aider aussi. Vous pouvez construire ensemble sur la Carte Pixel." },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Commence par la Forêt des Débuts. Mine. Apprends. Grandis." },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Le premier Boss t'attend au bout du chemin. Quand tu seras prêt… il tombera." },
+    { speaker: "Le Gardien",  emoji: "🧙", text: "Le monde compte sur toi, Gardien. Bonne chance. 🌟" },
+];
+
+let currentIdx = 0;
+let typing     = false;
+let typeTimer  = null;
+let skipType   = false;
+
+const speakerEl  = document.getElementById("speaker");
+const textEl     = document.getElementById("dialog-text");
+const progressEl = document.getElementById("progress-bar");
+const charEl     = document.getElementById("character");
+const choicesEl  = document.getElementById("choices");
+
+function showScene(idx) {
+    if (idx >= SCENES.length) { showEnd(); return; }
+    const scene = SCENES[idx];
+    speakerEl.textContent = scene.speaker;
+    charEl.textContent    = scene.emoji;
+    progressEl.style.width = ((idx / SCENES.length) * 100) + "%";
+    choicesEl.style.display = "none";
+    typeText(scene.text);
+}
+
+function typeText(text) {
+    typing   = true;
+    skipType = false;
+    textEl.innerHTML = "";
+    let i = 0;
+    function tick() {
+        if (skipType) {
+            textEl.innerHTML = text + '<span class="cursor"></span>';
+            typing = false;
+            return;
+        }
+        if (i <= text.length) {
+            textEl.innerHTML = text.slice(0, i) + '<span class="cursor"></span>';
+            i++;
+            typeTimer = setTimeout(tick, 28);
+        } else {
+            typing = false;
+        }
+    }
+    tick();
+}
+
+function advance() {
+    if (typing) { skipType = true; return; }
+    currentIdx++;
+    showScene(currentIdx);
+}
+
+// Clic / Espace pour avancer
+document.getElementById("scene").addEventListener("click", e => {
+    if (e.target.closest("#skip-btn") || e.target.closest(".choice-btn")) return;
+    advance();
+});
+document.addEventListener("keydown", e => {
+    if (e.key === " " || e.key === "Enter") { e.preventDefault(); advance(); }
+});
+
+// Skip complet
+document.getElementById("skip-btn").addEventListener("click", showEnd);
+
+// ── Écran de fin ─────────────────────────────────────────────────────────────
+async function showEnd() {
+    clearTimeout(typeTimer);
+    const endEl = document.getElementById("end-screen");
+    endEl.style.display = "flex";
+    endEl.style.opacity = "0";
+    endEl.style.transition = "opacity .8s";
+    setTimeout(() => endEl.style.opacity = "1", 50);
+
+    try {
+        const profile = await api.getProfile();
+        document.getElementById("end-username").textContent = profile.username || "Gardien";
+        // Marquer le tutoriel comme vu
+        await fetch("https://vacances-bot-web.onrender.com/api/story/tutorial/progress", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("jwt_token")}` },
+            body: JSON.stringify({ step: "DONE" })
+        });
+    } catch(_) {}
+
+    document.getElementById("btn-start").addEventListener("click", () => {
+        window.location.href = "profile.html";
+    });
+}
+
+// ── Vérifier si l'intro a déjà été vue ──────────────────────────────────────
+async function init() {
+    try {
+        const profile = await api.getProfile();
+        if (profile.tutorial_progress === "DONE") {
+            // Déjà vu → rediriger directement
+            window.location.href = "profile.html";
+            return;
+        }
+    } catch(_) {}
+    showScene(0);
+}
+
+init();
+</script>
+</body>
+</html>
