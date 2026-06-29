@@ -25,9 +25,33 @@ CORS(app, resources={
             "http://127.0.0.1:5501"
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": False
     }
 })
+
+# Fix CORS manuel pour les OPTIONS preflight (certaines routes Flask ratent le preflight)
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get("Origin", "")
+    allowed = [
+        "https://dragonknyght.github.io",
+        "https://DragonKnYghT.github.io",
+        "http://localhost:3000",
+        "http://127.0.0.1:5500",
+        "http://127.0.0.1:5501",
+    ]
+    if origin.lower() in [a.lower() for a in allowed]:
+        response.headers["Access-Control-Allow-Origin"]  = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
+
+@app.route("/api/<path:path>", methods=["OPTIONS"])
+def handle_options(path):
+    """Répond 200 à tous les preflight OPTIONS sur /api/*"""
+    resp = app.make_default_options_response()
+    return resp
 
 # ── MongoDB ──────────────────────────────────────────────────────────────────
 MONGO_URI = os.environ.get("MONGO_URI")
@@ -625,6 +649,7 @@ def get_shop():
         doc.get("message_points", 0)
     )
     available = max(0, total_points - doc.get("spent_points", 0))
+    items = []   # ← fix : manquait dans app_v2
     for key, item in SHOP_ITEMS.items():
         discounted = apply_class_discount(doc, key, item["price"])
         items.append({
@@ -797,6 +822,105 @@ def equip_item():
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes Skill Tree (Avec système d'épreuves Rythme OSU & Test Your Might)
 # ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/skilltree/<world_id>")
+@require_auth
+def get_skilltree_world(world_id):
+    """Route multi-mondes : renvoie base_tree + player_tree pour un monde donné."""
+    doc = get_user_doc(request.user_id)
+    unlocked       = doc.get("unlocked_nodes", [])
+    materials      = doc.get("materials", {})
+    completed_trials = doc.get("completed_trials", [])
+    unlocked_worlds  = doc.get("unlocked_worlds", ["monde_1"])
+
+    if world_id not in unlocked_worlds:
+        return jsonify({"error": "Monde non débloqué"}), 403
+
+    def build_nodes(tree_dict):
+        nodes = []
+        for key, node in tree_dict.items():
+            can_unlock = all(r in unlocked for r in node.get("requires", []))
+            affordable = all(materials.get(mat, 0) >= qty for mat, qty in node.get("cost", {}).items())
+            trial_done = node.get("trial") is None or key in completed_trials
+            nodes.append({
+                "id": key,
+                "name": node["name"],
+                "description": node["description"],
+                "cost": node.get("cost", {}),
+                "requires": node.get("requires", []),
+                "position": node.get("position", {"x": 400, "y": 300}),
+                "unlocked": key in unlocked,
+                "can_unlock": can_unlock and key not in unlocked,
+                "affordable": affordable and can_unlock and key not in unlocked,
+                "trial_required": node.get("trial"),
+                "trial_passed": trial_done,
+            })
+        return nodes
+
+    base_nodes   = build_nodes(SKILL_TREE_BASE)
+    player_nodes = build_nodes(SKILL_TREE_PLAYER)
+
+    base_done       = sum(1 for n in base_nodes if n["unlocked"])
+    world_completed = base_done == len(base_nodes) and len(base_nodes) > 0
+    world_list      = list(WORLDS.keys()) if "WORLDS" in dir() else ["monde_1","monde_2","monde_3","monde_4"]
+    try:
+        world_idx  = world_list.index(world_id)
+        next_world = world_list[world_idx + 1] if world_idx + 1 < len(world_list) else None
+    except (ValueError, IndexError):
+        next_world = None
+
+    return jsonify({
+        "world_id": world_id,
+        "world_name": world_id.replace("_", " ").title(),
+        "nodes": base_nodes + player_nodes,
+        "base_tree": base_nodes,
+        "player_tree": player_nodes,
+        "unlocked": unlocked,
+        "materials": materials,
+        "world_completed": world_completed,
+        "next_world": next_world,
+        "next_world_unlocked": next_world in unlocked_worlds if next_world else False,
+    })
+
+
+@app.route("/api/skilltree/<world_id>/unlock", methods=["POST"])
+@require_auth
+def unlock_node_world(world_id):
+    """Déblocage d'un nœud pour un monde donné (tree = 'base' | 'player')."""
+    data     = request.get_json()
+    node_key = data.get("node")
+    tree     = data.get("tree", "base")
+
+    tree_dict = SKILL_TREE_BASE if tree == "base" else SKILL_TREE_PLAYER
+    if node_key not in tree_dict and node_key not in SKILL_TREE:
+        return jsonify({"error": "Nœud inconnu"}), 404
+
+    node = tree_dict.get(node_key) or SKILL_TREE.get(node_key)
+    doc  = get_user_doc(request.user_id)
+    unlocked         = doc.get("unlocked_nodes", [])
+    materials        = doc.get("materials", {})
+    completed_trials = doc.get("completed_trials", [])
+
+    if node_key in unlocked:
+        return jsonify({"error": "Déjà débloqué"}), 400
+    if not all(r in unlocked for r in node.get("requires", [])):
+        return jsonify({"error": "Prérequis manquants"}), 400
+    if node.get("trial") and node_key not in completed_trials:
+        return jsonify({"error": "Tu dois réussir l'épreuve de ce nœud avant !"}), 400
+    for mat, qty in node.get("cost", {}).items():
+        if materials.get(mat, 0) < qty:
+            return jsonify({"error": f"Pas assez de {mat}"}), 400
+
+    inc    = {f"materials.{mat}": -qty for mat, qty in node.get("cost", {}).items()}
+    update = {"$inc": inc, "$push": {"unlocked_nodes": node_key}}
+
+    new_world = node.get("unlocks")
+    if new_world:
+        update["$addToSet"] = {"unlocked_worlds": new_world}
+
+    db.users.update_one({"user_id": request.user_id}, update)
+    return jsonify({"ok": True, "unlocked": node_key, "new_world": new_world})
+
 
 @app.route("/api/skilltree")
 @require_auth
