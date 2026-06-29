@@ -90,11 +90,19 @@
     </div>
 
     <script type="module">
-        import { isLoggedIn, loginWithDiscord } from "./static/js/api.js";
+        import { isLoggedIn, loginWithDiscord, api } from "./static/js/api.js";
 
-        // Si déjà connecté → profil
+        // Si déjà connecté → vérifier si l'intro a déjà été vue
         if (isLoggedIn()) {
-            window.location.href = "profile.html";
+            api.getProfile().then(p => {
+                if (!p.tutorial_progress || p.tutorial_progress === "START") {
+                    window.location.href = "intro.html";
+                } else {
+                    window.location.href = "profile.html";
+                }
+            }).catch(() => {
+                window.location.href = "profile.html";
+            });
         }
 
         document.getElementById("login-btn").addEventListener("click", loginWithDiscord);
