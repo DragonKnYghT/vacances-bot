@@ -98,11 +98,23 @@ async function init() {
                 <div class="tab" data-cat="materiau">Matériaux</div>
                 <div class="tab" data-cat="special">Spécial</div>
                 <div class="tab" data-cat="pixel">Pixels</div>
+                <div class="tab" data-cat="gacha">Gacha</div>
+                <div class="tab" data-cat="marchand" style="border-color:var(--gold);color:var(--gold)">💰 Marchand</div>
+            </div>
+
+            <div id="marchand-section" style="display:none">
+                <div class="card" style="margin-bottom:1rem;padding:1rem 1.4rem">
+                    <p style="color:var(--muted);font-size:.9rem">🧙 Le Marchand rachète tes matériaux contre des points. Les matériaux valent la moitié de leur prix d'achat.</p>
+                </div>
+                <div class="shop-grid" id="marchand-grid"></div>
             </div>
 
             <div class="shop-grid" id="shop-grid"></div>
         </div>
     `;
+
+const SELL_PRICES = { pierre: 5, bois: 4, fer: 12, cristal: 30, magie: 50 };
+const SELL_ICONS  = { pierre: "🪨", bois: "🪵", fer: "⚙️", cristal: "💎", magie: "✨" };
 
     document.getElementById("cat-tabs").addEventListener("click", e => {
         const tab = e.target.closest(".tab");
@@ -110,7 +122,11 @@ async function init() {
         currentCat = tab.dataset.cat;
         document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
-        renderItems();
+        const isMarchand = currentCat === "marchand";
+        document.getElementById("marchand-section").style.display = isMarchand ? "" : "none";
+        document.getElementById("shop-grid").style.display = isMarchand ? "none" : "";
+        if (!isMarchand) renderItems();
+        else renderMarchand();
     });
 
     renderItems();
@@ -148,6 +164,42 @@ function renderItems() {
             buy(id, qty, price);
         });
     });
+}
+
+function renderMarchand() {
+    const grid = document.getElementById("marchand-grid");
+    grid.innerHTML = Object.entries(SELL_PRICES).map(([id, sellPrice]) => `
+        <div class="shop-card">
+            <div class="item-icon">${SELL_ICONS[id]}</div>
+            <div>
+                <div class="item-name">${id.charAt(0).toUpperCase() + id.slice(1)}</div>
+                <div class="item-cat">Vente → <strong style="color:var(--green)">+${sellPrice} pts</strong> / unité</div>
+            </div>
+            <div class="qty-row">
+                <input type="number" class="qty-input" value="1" min="1" max="999" data-sell="${id}">
+                <button class="btn-gold" style="flex:1" data-sell="${id}" data-price="${sellPrice}">Vendre</button>
+            </div>
+        </div>
+    `).join("");
+
+    grid.querySelectorAll("button[data-sell]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const id  = btn.dataset.sell;
+            const qty = parseInt(grid.querySelector(`.qty-input[data-sell="${id}"]`)?.value || 1);
+            sell(id, qty);
+        });
+    });
+}
+
+async function sell(id, qty) {
+    try {
+        const res = await api.sellResources(id, qty);
+        userPoints = res.remaining_points;
+        document.getElementById("pts-display").textContent = `💠 ${fmt(userPoints)}`;
+        toast(`Vendu ${qty}× ${id} ! +${res.earned} pts`, "success");
+    } catch(e) {
+        toast(e.message, "error");
+    }
 }
 
 async function buy(id, qty, unitPrice) {
