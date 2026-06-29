@@ -192,6 +192,28 @@
             <div id="hover-info">Survole la grille pour voir les infos.</div>
         </div>
 
+        <!-- #12 Retour Maison -->
+        <div>
+            <h2>🏠 Navigation</h2>
+            <button class="tool-btn" style="width:100%;margin-bottom:.4rem;background:rgba(124,92,252,.15);border-color:var(--accent);color:var(--accent)" id="btn-home-pixel">🏠 Retour sur mon espace</button>
+        </div>
+
+        <!-- #11 Invitation Coloc -->
+        <div>
+            <h2>🤝 Inviter un ami</h2>
+            <div style="display:flex;flex-direction:column;gap:.4rem">
+                <input type="text" id="invite-username" placeholder="Pseudo Discord exact"
+                    style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:.45rem .75rem;color:var(--text);font-size:.85rem;font-family:var(--font)">
+                <button class="tool-btn" style="width:100%;border-color:var(--green);color:var(--green)" id="btn-invite">Envoyer l'invitation 📩</button>
+            </div>
+        </div>
+
+        <!-- Invitations reçues -->
+        <div id="invitations-section" style="display:none">
+            <h2>📬 Invitations reçues</h2>
+            <div id="invitations-list" style="display:flex;flex-direction:column;gap:.3rem;font-size:.82rem"></div>
+        </div>
+
     </div>
 
     <!-- Canvas -->
@@ -528,6 +550,49 @@ async function init() {
     buildWorldTabs();
     resizeCanvas();
     await loadWorld("monde_1");
+
+    // #12 Bouton Retour Maison
+    document.getElementById("btn-home-pixel").addEventListener("click", () => {
+        // Revenir sur le monde de l'utilisateur connecté et centrer la vue
+        const myWorld = profile.unlocked_worlds?.slice(-1)[0] || "monde_1";
+        loadWorld(myWorld);
+        toast("🏠 Retour sur ton espace !", "success");
+    });
+
+    // #11 Invitation
+    document.getElementById("btn-invite").addEventListener("click", async () => {
+        const username = document.getElementById("invite-username").value.trim();
+        if (!username) { toast("Entre un pseudo !", "error"); return; }
+        try {
+            const res = await fetch(`https://vacances-bot-web.onrender.com/api/pixel/invite`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("jwt_token")}` },
+                body: JSON.stringify({ target_username: username, world_id: currentWorld, x: 0, y: 0 })
+            }).then(r => r.json());
+            if (res.error) throw new Error(res.error);
+            toast(`Invitation envoyée à ${username} ! 📩`, "success");
+            document.getElementById("invite-username").value = "";
+        } catch(e) {
+            toast(e.message, "error");
+        }
+    });
+
+    // Charger invitations reçues
+    try {
+        const inv = await fetch(`https://vacances-bot-web.onrender.com/api/pixel/invitations`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("jwt_token")}` }
+        }).then(r => r.json());
+        const invList = inv.invitations || [];
+        if (invList.length > 0) {
+            document.getElementById("invitations-section").style.display = "";
+            document.getElementById("invitations-list").innerHTML = invList.slice(-5).reverse().map(i =>
+                `<div style="background:var(--bg3);border-radius:8px;padding:.4rem .6rem">
+                    <strong>${i.from}</strong> t'invite sur <em>${i.world_id}</em>
+                    <div style="color:var(--muted)">${i.timestamp?.slice(0,10) || ""}</div>
+                </div>`
+            ).join("");
+        }
+    } catch(_) {}
 }
 
 init().catch(console.error);
