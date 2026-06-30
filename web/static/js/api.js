@@ -3,7 +3,7 @@
  * Toutes les pages importent ce fichier.
  */
 
-const API_BASE = (window.__API_BASE__ || window.location.origin || "https://vacances-bot-web.onrender.com").replace(/\/$/, "");
+const API_BASE = (window.__API_BASE__ || "https://vacances-bot-web.onrender.com").replace(/\/$/, "");
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 

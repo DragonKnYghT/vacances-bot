@@ -5,12 +5,13 @@ Lance Flask sur le bon port, puis le bot Discord.
 import os
 import asyncio
 import threading
-from flask import Flask
 from dotenv import load_dotenv
 
 load_dotenv()
 
-app = Flask(__name__)
+from web.app import app as web_app
+
+app = web_app
 
 @app.route("/")
 def home():
