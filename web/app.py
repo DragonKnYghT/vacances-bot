@@ -53,6 +53,25 @@ def handle_options(path):
     resp = app.make_default_options_response()
     return resp
 
+# Fix CORS : intercepte TOUS les OPTIONS avant le routing (fix 405 sur gacha/pull)
+@app.before_request
+def _handle_preflight():
+    if request.method == "OPTIONS":
+        resp = app.make_default_options_response()
+        origin = request.headers.get("Origin", "")
+        allowed = [
+            "https://dragonknyght.github.io",
+            "https://DragonKnYghT.github.io",
+            "http://localhost:3000",
+            "http://127.0.0.1:5500",
+            "http://127.0.0.1:5501",
+        ]
+        if origin.lower() in [a.lower() for a in allowed]:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return resp
+
 # ── MongoDB ──────────────────────────────────────────────────────────────────
 MONGO_URI = os.environ.get("MONGO_URI")
 client = MongoClient(MONGO_URI)
@@ -101,10 +120,11 @@ CLASSES = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 RARITIES = {
-    "commun":    {"label": "Commun",    "color": "#7a7f9a", "chance": 55},
-    "rare":      {"label": "Rare",      "color": "#5ca8f0", "chance": 30},
-    "epique":    {"label": "Épique",    "color": "#7c5cfc", "chance": 12},
-    "legendaire":{"label": "Légendaire","color": "#f5c542", "chance": 3},
+    "commun":     {"label": "Commun",     "color": "#7a7f9a", "chance": 55},
+    "rare":       {"label": "Rare",       "color": "#5ca8f0", "chance": 30},
+    "epique":     {"label": "Épique",     "color": "#7c5cfc", "chance": 12},
+    "legendaire": {"label": "Légendaire", "color": "#f5c542", "chance": 3},
+    "secret":     {"label": "Secret",     "color": "#e91e63", "chance": 0.01},
 }
 
 GACHA_CLASSES = [
@@ -146,6 +166,15 @@ GACHA_RACES = [
 ]
 
 # ── Mondes / maps pixel ──────────────────────────────────────────────────────
+# ── HP par type de bloc (#2) ─────────────────────────────────────────────────
+BLOCK_HP = {
+    "bois":    10,
+    "pierre":  12,
+    "fer":     25,
+    "cristal": 60,
+    "magie":   100,
+}
+
 WORLDS = {
     "monde_1": {"name": "La Forêt des Débuts", "required_nodes": [], "grid_size": 100},
     "monde_2": {"name": "Les Plaines de Feu",  "required_nodes": ["foret_complete"], "grid_size": 100},
@@ -230,7 +259,7 @@ SKILL_TREE_PLAYER = {
         "description": "+1 bloc brisé supplémentaire par clic sur le One Bloc",
         "cost": {"bois": 10},
         "requires": [],
-        "position": {"x": 950, "y": 50},
+        "position": {"x": 450, "y": 50},
         "trial": None
     },
     "chance_accrue": {
@@ -238,7 +267,7 @@ SKILL_TREE_PLAYER = {
         "description": "+2% de chance globale sur les tirages du Gacha",
         "cost": {"cristal": 5},
         "requires": ["clics_efficaces"],
-        "position": {"x": 950, "y": 230},
+        "position": {"x": 450, "y": 230},
         "trial": "osu_rhythm"
     },
     "fureur_du_gardien": {
@@ -246,7 +275,7 @@ SKILL_TREE_PLAYER = {
         "description": "+15% de dégâts contre les boss du serveur",
         "cost": {"fer": 15, "magie": 1},
         "requires": ["chance_accrue"],
-        "position": {"x": 950, "y": 410},
+        "position": {"x": 450, "y": 410},
         "trial": "test_your_might"
     }
 }
@@ -566,17 +595,20 @@ def advance_tutorial():
 def get_one_block_state():
     """Retourne l'état actuel du Cliqueur pour affichage initial."""
     doc = get_user_doc(request.user_id)
-    one_block_data = doc.get("one_block", {"phase": 1, "broken": 0, "next": "bois"})
+    one_block_data = doc.get("one_block", {"phase": 1, "broken": 0, "next": "bois", "current_hp": 10})
     has_pickaxe = any(
         item for item in doc.get("inventory", [])
         if item.get("item_id") == "wooden_pickaxe" and item.get("equipped") is True
     )
+    current_block = one_block_data.get("next", "bois")
+    max_hp = BLOCK_HP.get(current_block, 10)
     return jsonify({
         "phase":         one_block_data.get("phase", 1),
         "broken":        one_block_data.get("broken", 0),
-        "next_block":    one_block_data.get("next", "bois"),
+        "next_block":    current_block,
         "phase_needed":  one_block_data.get("phase", 1) * 100,
-        "hp_remaining":  one_block_data.get("current_hp", 10),
+        "hp_remaining":  one_block_data.get("current_hp", max_hp),
+        "max_hp":        max_hp,
         "materials":     doc.get("materials", {}),
         "has_pickaxe":   has_pickaxe,
         "tutorial_progress": doc.get("tutorial_progress"),
@@ -585,59 +617,63 @@ def get_one_block_state():
 @app.route("/api/oneblock/mine", methods=["POST"])
 @require_auth
 def mine_one_block():
-    """Gère le clic de cassage de bloc, requiert la pioche en bois équipée au début."""
+    """Gère le clic de minage : -1 HP par clic. Ressource donnée SEULEMENT quand HP atteint 0.
+    La phase augmente à chaque bloc cassé (100 blocs = 1 phase)."""
     doc = get_user_doc(request.user_id)
-    
-    # Vérification de l'outil équipé (Tuto force à équiper la pioche en bois)
+
     has_pickaxe = any(item for item in doc.get("inventory", []) if item.get("item_id") == "wooden_pickaxe" and item.get("equipped") is True)
-    
-    # Bypass de sécurité uniquement si le joueur est en plein tutoriel
     if not has_pickaxe and doc.get("tutorial_progress") == "DONE":
         return jsonify({"error": "Tu dois forger et équiper une Pioche en Bois pour miner le One Bloc !"}), 400
 
     one_block_data = doc.get("one_block", {"phase": 1, "broken": 0, "next": "bois", "current_hp": 10})
-    
-    # Calcul des bonus de clic via l'arbre du joueur
+
+    # Bonus de clic via l'arbre du joueur
     click_power = 1
     if "clics_efficaces" in doc.get("unlocked_nodes", []):
         click_power += 1
 
     current_phase = one_block_data.get("phase", 1)
     current_broken = one_block_data.get("broken", 0)
-    current_hp = one_block_data.get("current_hp", 10) - 1
+    current_block = one_block_data.get("next", "bois")
+    max_hp = BLOCK_HP.get(current_block, 10)
+    current_hp = one_block_data.get("current_hp", max_hp)
+
+    # Chaque clic enlève click_power HP
+    current_hp -= click_power
 
     block_broken = False
     gained_mat = None
     next_phase = current_phase
-    next_mat_visual = one_block_data.get("next", "bois")
+    next_mat_visual = current_block
 
     if current_hp <= 0:
+        # ── Le bloc est cassé ! On donne la ressource ──
         block_broken = True
-        # Un clic casse le bloc ; le bonus clics efficaces ajoute des blocs brisés supplémentaires
-        blocks_cleared = max(1, click_power)
-        current_broken += blocks_cleared
+        current_broken += 1  # +1 bloc cassé (pas +1 par clic !)
 
-        # Détermination du matériau gagné selon la phase
-        materials_pool = ["bois"]
-        if current_phase >= 2: materials_pool.append("pierre")
-        if current_phase >= 3: materials_pool.append("fer")
-        if current_phase >= 4: materials_pool.extend(["cristal", "magie"])
+        # Matériau gagné = le bloc qu'on vient de casser
+        gained_mat = current_block
 
-        gained_mat = _random.choice(materials_pool)
-
-        # Changement de phase selon le nombre de blocs cassés
-        while current_broken >= next_phase * 100:
-            current_broken -= next_phase * 100
+        # ── Changement de phase : 100 blocs cassés = +1 phase (#4) ──
+        phase_needed = current_phase * 100
+        if current_broken >= phase_needed:
+            current_broken = 0
             next_phase += 1
 
-        current_hp = 10
+        # ── Nouveau bloc à miner (#2 : HP différents par type) ──
+        materials_pool = ["bois"]
+        if next_phase >= 2: materials_pool.append("pierre")
+        if next_phase >= 3: materials_pool.append("fer")
+        if next_phase >= 4: materials_pool.extend(["cristal", "magie"])
+
         next_mat_visual = _random.choice(materials_pool)
+        new_max_hp = BLOCK_HP.get(next_mat_visual, 10)
 
         update_fields = {
             "one_block.broken": current_broken,
             "one_block.phase": next_phase,
             "one_block.next": next_mat_visual,
-            "one_block.current_hp": current_hp
+            "one_block.current_hp": new_max_hp,
         }
         db.users.update_one(
             {"user_id": request.user_id},
@@ -646,13 +682,17 @@ def mine_one_block():
                 "$inc": {f"materials.{gained_mat}": 1}
             }
         )
+        current_hp = new_max_hp
+        max_hp = new_max_hp
     else:
+        # Bloc pas encore cassé : on sauve juste les HP
         db.users.update_one(
             {"user_id": request.user_id},
-            {
-                "$set": {"one_block.current_hp": current_hp}
-            }
+            {"$set": {"one_block.current_hp": current_hp}}
         )
+
+    # Récupérer les matériaux à jour pour la réponse (#3)
+    updated_doc = get_user_doc(request.user_id)
 
     return jsonify({
         "ok": True,
@@ -662,7 +702,9 @@ def mine_one_block():
         "phase": next_phase,
         "next_block": next_mat_visual,
         "phase_needed": next_phase * 100,
-        "hp_remaining": current_hp
+        "hp_remaining": max(0, current_hp),
+        "max_hp": max_hp,
+        "materials": updated_doc.get("materials", {}),
     })
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -732,45 +774,6 @@ def buy_item():
 
     db.users.update_one({"user_id": request.user_id}, update)
     return jsonify({"ok": True, "spent": price, "remaining_points": available - price})
-
-@app.route("/api/merchant/sell", methods=["POST"])
-@require_auth
-def sell_item():
-    """Le Marchand : Deuxième page de la boutique pour vendre ses ressources contre des Coins."""
-    data = request.get_json()
-    item_key = data.get("item")
-    qty = int(data.get("quantity", 1))
-
-    if item_key not in SHOP_ITEMS or "sell_price" not in SHOP_ITEMS[item_key]:
-        return jsonify({"error": "Cet article ne peut pas être vendu."}), 400
-
-    doc = get_user_doc(request.user_id)
-    user_mats = doc.get("materials", {})
-    
-    if user_mats.get(item_key, 0) < qty:
-        return jsonify({"error": f"Tu n'as pas assez de {item_key} à vendre."}), 400
-
-    earnings = SHOP_ITEMS[item_key]["sell_price"] * qty
-
-    # Vendre déduit les matériaux et réduit le "spent_points" pour regagner du solde disponible
-    db.users.update_one(
-        {"user_id": request.user_id},
-        {
-            "$inc": {
-                f"materials.{item_key}": -qty,
-                "spent_points": -earnings # Réduire les dépenses revient à donner du budget !
-            }
-        }
-    )
-
-    doc_after = get_user_doc(request.user_id)
-    total_points = (
-        doc_after.get("vocal_points", 0) +
-        doc_after.get("message_points", 0)
-    )
-    remaining = max(0, total_points - doc_after.get("spent_points", 0))
-
-    return jsonify({"ok": True, "earned": earnings, "remaining_points": remaining})
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes Inventaire & La Forge (Déblocable monde 2 via l'arbre)
@@ -1147,7 +1150,6 @@ def place_pixel(world_id):
 
 @app.route("/api/pixel/invite", methods=["POST"])
 @require_auth
-@require_auth
 def invite_to_pixel_zone():
     """Système d'invitation au pixel : envoie une notification à un autre joueur."""
     doc = get_user_doc(request.user_id)
@@ -1344,7 +1346,7 @@ def _get_gacha_pull_type(data, view_args):
 @app.route("/api/gacha/pull/<pull_type>", methods=["POST"])
 @require_auth
 def pull_gacha(pull_type=None):
-    """Gère un tirage avec l'augmentation par étape de 5% de pitié, plus une rareté secrète exclue de la pitié."""
+    """Gère un tirage avec augmentation par étape de 5% de pitié, plus une rareté secrète (0.01%) exclue de la pitié."""
     data = request.get_json(silent=True) or {}
     pull_type = pull_type or data.get("type")
     if pull_type not in ("classe", "race"):
@@ -1358,16 +1360,17 @@ def pull_gacha(pull_type=None):
     pity_data = doc.get("gacha_pity", {"total_pulls": 0, "current_step": 0, "bonus_chance": 0.0})
     current_total_pulls = pity_data.get("total_pulls", 0)
 
-    # Secret rarity exclue de la pitié : très faible, indépendante du reste
+    # ── Rareté secrète : 0.01% de chance, EXCLUE de la pitié (#10) ──
     if _random.random() < 0.0001:
         gained_rarity = "secret"
         secret_hit = True
         total_pulls = current_total_pulls
+        current_step = pity_data.get("current_step", 0)
+        bonus_chance = pity_data.get("bonus_chance", 0.0)
     else:
         secret_hit = False
         total_pulls = current_total_pulls + 1
-        current_step = total_pulls // 10
-        if current_step > 10: current_step = 10
+        current_step = min(10, total_pulls // 10)
         bonus_chance = current_step * 5.0
         legendary_threshold = 3.0 + bonus_chance
         hard_pity_triggered = total_pulls >= 200
@@ -1387,15 +1390,14 @@ def pull_gacha(pull_type=None):
     pool = GACHA_CLASSES if pull_type == "classe" else GACHA_RACES
     available_rewards = [item for item in pool if item.get("rarity") == gained_rarity]
     if not available_rewards:
-        # Fallback sécurité
         available_rewards = [item for item in pool if item.get("rarity") == "legendaire"] or pool
     reward = _random.choice(available_rewards)
 
     update_set = {
         pull_type: reward["id"],
         "gacha_pity.total_pulls": total_pulls,
-        "gacha_pity.current_step": 0 if secret_hit else current_step,
-        "gacha_pity.bonus_chance": 0.0 if secret_hit else bonus_chance
+        "gacha_pity.current_step": current_step,
+        "gacha_pity.bonus_chance": bonus_chance,
     }
 
     db.users.update_one(
@@ -1417,8 +1419,8 @@ def pull_gacha(pull_type=None):
         "tickets_left": tickets_left,
         "pity": {
             "total_pulls": total_pulls,
-            "current_step": 0 if secret_hit else current_step,
-            "bonus_chance": 0.0 if secret_hit else bonus_chance,
+            "current_step": current_step,
+            "bonus_chance": bonus_chance,
             "hard_pity_triggered": not secret_hit and total_pulls >= 200
         }
     })
@@ -1459,6 +1461,39 @@ def get_leaderboard():
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes Codes Promo
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Codes promo de test (#11) — seedés automatiquement au démarrage
+PROMO_CODES_SEED = [
+    {"code": "VACANCES2024",  "rewards": {"vocal_points": 50, "message_points": 50}, "total_max": None, "active": True},
+    {"code": "BOIS100",       "rewards": {"bois": 100}, "total_max": None, "active": True},
+    {"code": "PIERRE50",      "rewards": {"pierre": 50}, "total_max": None, "active": True},
+    {"code": "FER25",         "rewards": {"fer": 25}, "total_max": None, "active": True},
+    {"code": "CRISTAL10",     "rewards": {"cristal": 10}, "total_max": None, "active": True},
+    {"code": "MAGIE5",        "rewards": {"magie": 5}, "total_max": None, "active": True},
+    {"code": "PIXELS20",      "rewards": {"pixels_remaining": 20}, "total_max": None, "active": True},
+    {"code": "TICKETCLASSE",  "rewards": {"tickets_classe": 1}, "total_max": 100, "active": True},
+    {"code": "TICKETRACE",    "rewards": {"tickets_race": 1}, "total_max": 100, "active": True},
+    {"code": "BIGPACK",       "rewards": {"bois": 50, "pierre": 50, "fer": 20, "cristal": 5, "magie": 2, "pixels_remaining": 10}, "total_max": 50, "active": True},
+    {"code": "MEGA",          "rewards": {"vocal_points": 100, "message_points": 100, "pixels_remaining": 30, "tickets_classe": 2, "tickets_race": 2}, "total_max": 10, "active": True},
+]
+
+def seed_promo_codes():
+    """Insère les codes promo de test s'ils n'existent pas encore."""
+    for code_data in PROMO_CODES_SEED:
+        existing = db.codes.find_one({"code": code_data["code"]})
+        if not existing:
+            db.codes.insert_one({
+                **code_data,
+                "used_by": [],
+                "total_used": 0,
+                "created_at": datetime.utcnow()
+            })
+
+# Seed au démarrage
+try:
+    seed_promo_codes()
+except Exception as e:
+    print(f"[WARN] Impossible de seed les codes promo : {e}")
 
 REWARD_LABELS = {
     "message_points":   "points messages",
@@ -1630,9 +1665,6 @@ def merchant_sell():
     return jsonify({"ok": True, "earned": earned, "remaining_points": max(0, total)})
 
 
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)
-
 # ─────────────────────────────────────────────────────────────────────────────
 # GACHA INFO — Résumé tickets + classe/race actuelle (utilisé par gacha.html)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1739,3 +1771,7 @@ def claim_quest():
         rewards_display.append(f"+{amt} {label}")
 
     return jsonify({"ok": True, "rewards": rewards_display})
+
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
