@@ -3,7 +3,7 @@
  * Toutes les pages importent ce fichier.
  */
 
-const API_BASE = "https://vacances-bot-web.onrender.com"; // ← à remplacer
+const API_BASE = (window.__API_BASE__ || window.location.origin || "https://vacances-bot-web.onrender.com").replace(/\/$/, "");
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -124,7 +124,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ node, success }),
     }),
-    getPixelMap:     (world)      => apiFetch(`/api/pixelmap/${world}`),
+    getPixelMap:     (world, playerId) => apiFetch(`/api/pixelmap/${world}${playerId ? `?player_id=${encodeURIComponent(playerId)}` : ""}`),
+    getPixelMapGallery: (world)   => apiFetch(`/api/pixelmap/${world}/gallery`),
     placePixel:      (world, x, y, color) => apiFetch(`/api/pixelmap/${world}/place`, {
         method: "POST",
         body: JSON.stringify({ x, y, color }),

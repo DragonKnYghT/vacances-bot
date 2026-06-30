@@ -194,7 +194,7 @@ function renderMarchand() {
 async function sell(id, qty) {
     try {
         const res = await api.sellResources(id, qty);
-        userPoints = res.remaining_points;
+        userPoints = res.remaining_points ?? userPoints;
         document.getElementById("pts-display").textContent = `💠 ${fmt(userPoints)}`;
         toast(`Vendu ${qty}× ${id} ! +${res.earned} pts`, "success");
     } catch(e) {

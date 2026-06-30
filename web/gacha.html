@@ -235,15 +235,15 @@
 </div>
 
 <script type="module">
-import { isLoggedIn } from "./static/js/api.js";
+import { api } from "./static/js/api.js";
 import { renderNav, loadNavUser, requireAuth, toast } from "./static/js/ui.js";
 
 renderNav("gacha");
 if (!requireAuth()) throw new Error("not auth");
 
-const API = "https://vacances-bot-web.onrender.com";
+const API_BASE = (window.__API_BASE__ || window.location.origin || "").replace(/\/$/, "");
 const token = () => localStorage.getItem("jwt_token");
-const apiFetch = (path, opts = {}) => fetch(API + path, {
+const apiFetch = (path, opts = {}) => fetch(`${API_BASE}${path}`, {
     ...opts,
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token()}`, ...opts.headers }
 }).then(r => r.json());
@@ -253,9 +253,10 @@ const RARITY_COLORS = {
     rare:       "#5ca8f0",
     epique:     "#7c5cfc",
     legendaire: "#f5c542",
+    secret:     "#e91e63",
 };
 const RARITY_LABELS = {
-    commun: "Commun", rare: "Rare", epique: "Épique", legendaire: "Légendaire"
+    commun: "Commun", rare: "Rare", epique: "Épique", legendaire: "Légendaire", secret: "Secret"
 };
 
 // Pool mis à jour pour correspondre à tes classes réelles (incluant Marchand)
@@ -367,7 +368,7 @@ window.pull = async function(type) {
     resultPanel.classList.remove("show");
 
     try {
-        const res = await apiFetch(`/api/gacha/pull/${type}`, { method: "POST" });
+        const res = await api.pullGacha(type);
         if (res.error) { 
             toast(res.error, "error"); 
             spinning[type] = false;
@@ -376,7 +377,7 @@ window.pull = async function(type) {
         }
 
         const items = type === "classe" ? WHEEL_CLASSES : WHEEL_RACES;
-        const serverObtainedName = res.result.name;
+        const serverObtainedName = res.reward.name;
 
         // Recherche stricte et insensible à la casse
         let idx = items.findIndex(i => serverObtainedName.toLowerCase().includes(i.label.toLowerCase()));
@@ -398,14 +399,14 @@ window.pull = async function(type) {
             // Mise à jour tickets
             if (type === "classe") {
                 document.getElementById("tc-count").textContent = res.tickets_left;
-                document.getElementById("current-classe").textContent = res.result.name;
+                document.getElementById("current-classe").textContent = res.reward.name;
             } else {
                 document.getElementById("tr-count").textContent = res.tickets_left;
-                document.getElementById("current-race").textContent = res.result.name;
+                document.getElementById("current-race").textContent = res.reward.name;
             }
 
             // Historique
-            sessionHistory.unshift({ type, result: res.result, rarity: res.rarity });
+            sessionHistory.unshift({ type, result: res.reward, rarity: res.rarity });
             renderHistory();
         });
     } catch(e) {
@@ -418,14 +419,14 @@ window.pull = async function(type) {
 function showResult(type, res) {
     const panel  = document.getElementById(`result-${type}`);
     const color  = RARITY_COLORS[res.rarity] || "#fff";
-    document.getElementById(`rn-${type}`).textContent   = res.result.name;
+    document.getElementById(`rn-${type}`).textContent   = res.reward.name;
     document.getElementById(`rb-${type}`).innerHTML     = `<span class="rarity-badge" style="color:${color};border-color:${color}">${RARITY_LABELS[res.rarity] || res.rarity}</span>`;
-    document.getElementById(`rbx-${type}`).textContent  = res.result.bonus || "";
+    document.getElementById(`rbx-${type}`).textContent  = res.reward.bonus || "";
     panel.classList.add("show");
     panel.style.border = `1px solid ${color}`;
     panel.style.background = `${color}18`;
     if (res.old) {
-        toast(`${res.old ? res.old + " → " : ""}${res.result.name} (${RARITY_LABELS[res.rarity]})`, res.rarity === "legendaire" ? "success" : "info");
+        toast(`${res.old ? res.old + " → " : ""}${res.reward.name} (${RARITY_LABELS[res.rarity]})`, res.rarity === "legendaire" ? "success" : "info");
     }
 }
 
@@ -482,7 +483,7 @@ window.claimQuest = async function() {
 async function loadInfo() {
     const [info, profile, pityData] = await Promise.all([
         apiFetch("/api/gacha/info"),
-        apiFetch("/api/profile"),
+        api.getProfile(),
         apiFetch("/api/gacha/pity/status").catch(() => ({pity: {total_pulls:0, bonus_chance:0}})),
     ]);
     window.__profile = profile;

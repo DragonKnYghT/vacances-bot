@@ -149,7 +149,7 @@
         };
 
         const resourceIcons = {
-            wood: "🪵", stone: "🪨", iron: "🪙", gold: "👑", diamond: "💎", netherite: "🔥"
+            bois: "🪵", pierre: "🪨", fer: "⚙️", cristal: "💎", magie: "✨"
         };
 
         async function initOneBlock() {
@@ -193,11 +193,10 @@
                 document.getElementById("phase-label").textContent = `${broken} / ${needed}`;
                 document.getElementById("phase-bar").style.width = phasePct + "%";
 
-                // Reset HP au chargement
-                currentHp = MAX_HP;
+                currentHp = state.hp_remaining ?? MAX_HP;
                 updateHpBar();
 
-                renderResources(state.player_materials);
+                renderResources(state.materials);
 
             } catch (err) {
                 toast("Erreur lors de la récupération du One Bloc", "error");
@@ -211,27 +210,27 @@
         }
 
         async function handleMine() {
-            currentHp = Math.max(0, currentHp - 1);
-            updateHpBar();
-
             // Animation shake
             const block = document.getElementById("visual-block");
             block.style.transition = "transform .05s";
             block.style.transform = `scale(0.88) rotate(${(Math.random() - 0.5) * 6}deg)`;
             setTimeout(() => { block.style.transform = ""; }, 80);
 
-            if (currentHp <= 0) {
-                // Le bloc se brise !
-                block.style.transform = "scale(1.15)";
-                block.style.opacity = "0";
-                setTimeout(() => { block.style.transform = ""; block.style.opacity = "1"; }, 250);
-            }
-
             try {
                 const result = await api.mineOneBlock();
                 if (result.error) { toast(result.error, "error"); return; }
 
-                toast(`+1 ${result.gained ? result.gained.toUpperCase() : "???"} ⛏️`, "success");
+                if (result.block_broken) {
+                    block.style.transform = "scale(1.15)";
+                    block.style.opacity = "0";
+                    setTimeout(() => { block.style.transform = ""; block.style.opacity = "1"; }, 250);
+                    if (result.gained) {
+                        toast(`+1 ${result.gained.toUpperCase()} ⛏️`, "success");
+                    }
+                }
+
+                currentHp = result.hp_remaining ?? MAX_HP;
+                updateHpBar();
 
                 // Mettre à jour phase bar sans full reload
                 const broken = result.broken || 0;
@@ -240,15 +239,11 @@
                 document.getElementById("phase-label").textContent = `${broken} / ${needed}`;
                 document.getElementById("phase-bar").style.width = phasePct + "%";
 
-                if (currentHp <= 0) {
-                    // Nouveau bloc
-                    currentHp = MAX_HP;
-                    updateHpBar();
+                if (result.block_broken) {
                     await refreshState();
                 } else {
-                    // Juste mettre à jour les ressources légèrement
                     const state = await api.getOneBlockState();
-                    renderResources(state.player_materials);
+                    renderResources(state.materials);
                 }
             } catch (err) {
                 toast(err.message || "Impossible de miner", "error");
@@ -260,7 +255,7 @@
             container.innerHTML = "";
 
             // On s'assure qu'on affiche au moins les matériaux de base même si à 0
-            const keys = ["wood", "stone", "iron", "gold", "diamond", "netherite"];
+            const keys = ["bois", "pierre", "fer", "cristal", "magie"];
             
             keys.forEach(key => {
                 const count = materials[key] || 0;

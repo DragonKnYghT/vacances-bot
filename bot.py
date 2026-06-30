@@ -310,7 +310,12 @@ async def semaine_info(interaction: discord.Interaction):
 # ──────────────────────────────────────────
 
 @tree.command(name="test", description="🔧 Teste tous les systèmes du bot (admin)")
-async def test_bot(interaction: discord.Interaction):
+@app_commands.describe(full_preview="Génère et envoie un aperçu des 8 semaines d'activité")
+async def test_bot(interaction: discord.Interaction, full_preview: bool = False):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Seuls les administrateurs peuvent utiliser cette commande.", ephemeral=True)
+        return
+
     await interaction.response.defer(ephemeral=True)
     results = []
 
@@ -378,6 +383,16 @@ async def test_bot(interaction: discord.Interaction):
     else:
         results.append(("⚠️", "Tâches automatiques", f"Daily: {'✓' if daily_ok else '✗'} | Weekly: {'✓' if weekly_ok else '✗'}"))
 
+    # Test 9 : Planning complet des 8 semaines
+    try:
+        missing_weeks = [w for w in range(1, 9) if w not in ACTIVITIES_SCHEDULE]
+        if missing_weeks:
+            results.append(("❌", "Planning des semaines", f"Semaines manquantes : {missing_weeks}"))
+        else:
+            results.append(("✅", "Planning des semaines", "8 semaines d'activités configurées"))
+    except Exception as e:
+        results.append(("❌", "Planning des semaines", str(e)))
+
     # Construire l'embed résultat
     all_ok = all(r[0] == "✅" for r in results)
     has_error = any(r[0] == "❌" for r in results)
@@ -395,6 +410,19 @@ async def test_bot(interaction: discord.Interaction):
 
     embed.set_footer(text=f"Test effectué le {datetime.now(TIMEZONE).strftime('%d/%m/%Y à %H:%M')}")
     await interaction.followup.send(embed=embed, ephemeral=True)
+
+    if full_preview:
+        for week_num in range(1, 9):
+            activity = ACTIVITIES_SCHEDULE.get(week_num)
+            if not activity:
+                continue
+            try:
+                content = await generate_activity_content(activity["type"])
+                preview_embed = activity["build_embed"](content)
+                preview_embed.set_footer(text=f"Semaine {week_num}/8 — {activity['name']}")
+                await interaction.followup.send(embed=preview_embed, ephemeral=True)
+            except Exception as e:
+                await interaction.followup.send(f"❌ Erreur génération semaine {week_num} : {e}", ephemeral=True)
 
 # ──────────────────────────────────────────
 #  POINTS VOCAL

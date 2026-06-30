@@ -172,6 +172,7 @@
                 <span>Restants</span>
                 <span class="count" id="pixels-left">—</span>
             </div>
+            <div id="owner-badge" style="margin-top:.5rem;font-size:.85rem;color:var(--muted)">Carte personnelle</div>
             <div style="margin-top:.5rem;font-size:.8rem;color:var(--muted)">
                 Achète des pixels en <a href="shop.html">boutique →</a>
             </div>
@@ -199,6 +200,12 @@
         </div>
 
         <!-- #11 Invitation Coloc -->
+        <div>
+            <h2>🖼️ Galerie</h2>
+            <div id="gallery-list" style="display:flex;flex-direction:column;gap:.45rem"></div>
+            <button class="tool-btn" id="btn-refresh-gallery" style="margin-top:.4rem">Actualiser la galerie</button>
+        </div>
+
         <div>
             <h2>🤝 Inviter un ami</h2>
             <div style="display:flex;flex-direction:column;gap:.4rem">
@@ -247,6 +254,7 @@ const PALETTE = [
 // ── État ─────────────────────────────────────────────────────────────────
 const GRID   = 100;
 let currentWorld  = "monde_1";
+let currentViewer = null;
 let pixels        = {};       // "x,y" → color
 let selectedColor = "#7c5cfc";
 let pixelsLeft    = 0;
@@ -348,6 +356,10 @@ function updateZoomLabel() {
 // ── Placement pixel ───────────────────────────────────────────────────────
 async function placePixelAt(gx, gy) {
     if (!inGrid(gx, gy)) return;
+    if (currentViewer && currentViewer !== profile.user_id) {
+        toast("Lecture seule : tu ne peux pas dessiner sur cette carte.", "error");
+        return;
+    }
     if (pixelsLeft <= 0) { toast("Plus de pixels ! Achète des packs en boutique.", "error"); return; }
 
     const key = `${gx},${gy}`;
@@ -508,8 +520,8 @@ function buildWorldTabs() {
 }
 
 // ── Chargement monde ──────────────────────────────────────────────────────
-async function loadWorld(worldId) {
-    if (worldId === currentWorld && Object.keys(pixels).length > 0) return;
+async function loadWorld(worldId, playerId = null) {
+    if (worldId === currentWorld && playerId === currentViewer && Object.keys(pixels).length > 0) return;
     currentWorld = worldId;
 
     // Update tabs
@@ -520,9 +532,11 @@ async function loadWorld(worldId) {
     pixels = {};
 
     try {
-        const data = await api.getPixelMap(worldId);
+        const data = await api.getPixelMap(worldId, playerId);
+        currentViewer = playerId || profile.user_id;
         pixelsLeft = data.user_pixels_remaining;
         document.getElementById("pixels-left").textContent = pixelsLeft;
+        renderOwnerBadge(data.owner);
 
         // Remplir pixels
         for (const p of data.pixels) {
@@ -530,6 +544,7 @@ async function loadWorld(worldId) {
         }
         resizeCanvas();
         fitView();
+        loadGallery(worldId);
     } catch(e) {
         if (e.message.includes("verrouillé")) {
             toast("Ce monde est verrouillé ! Débloque-le dans le Skill Tree.", "error");
@@ -555,16 +570,18 @@ async function init() {
     document.getElementById("btn-home-pixel").addEventListener("click", () => {
         // Revenir sur le monde de l'utilisateur connecté et centrer la vue
         const myWorld = profile.unlocked_worlds?.slice(-1)[0] || "monde_1";
-        loadWorld(myWorld);
+        loadWorld(myWorld, null);
         toast("🏠 Retour sur ton espace !", "success");
     });
+
+    document.getElementById("btn-refresh-gallery").addEventListener("click", () => loadGallery(currentWorld));
 
     // #11 Invitation
     document.getElementById("btn-invite").addEventListener("click", async () => {
         const username = document.getElementById("invite-username").value.trim();
         if (!username) { toast("Entre un pseudo !", "error"); return; }
         try {
-            const res = await fetch(`https://vacances-bot-web.onrender.com/api/pixel/invite`, {
+            const res = await fetch(`${location.origin}/api/pixel/invite`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("jwt_token")}` },
                 body: JSON.stringify({ target_username: username, world_id: currentWorld, x: 0, y: 0 })
@@ -579,7 +596,7 @@ async function init() {
 
     // Charger invitations reçues
     try {
-        const inv = await fetch(`https://vacances-bot-web.onrender.com/api/pixel/invitations`, {
+        const inv = await fetch(`${location.origin}/api/pixel/invitations`, {
             headers: { "Authorization": `Bearer ${localStorage.getItem("jwt_token")}` }
         }).then(r => r.json());
         const invList = inv.invitations || [];
@@ -593,6 +610,47 @@ async function init() {
             ).join("");
         }
     } catch(_) {}
+}
+
+function renderOwnerBadge(owner) {
+    const ownerEl = document.getElementById("owner-badge");
+    if (!ownerEl) return;
+    if (!owner) {
+        ownerEl.textContent = "Carte personnelle";
+        return;
+    }
+    if (owner.is_self) {
+        ownerEl.innerHTML = `Carte personnelle de <strong>toi</strong> (édition activée)`;
+    } else {
+        ownerEl.innerHTML = `Carte de <strong>${owner.username}</strong> — lecture seule`;
+    }
+}
+
+async function loadGallery(worldId) {
+    try {
+        const gallery = await api.getPixelMapGallery(worldId);
+        const list = document.getElementById("gallery-list");
+        if (!gallery.players.length) {
+            list.innerHTML = `<div style="color:var(--muted);font-size:.88rem">Aucun autre artiste pour le moment.</div>`;
+            return;
+        }
+
+        list.innerHTML = gallery.players.map(player => `
+            <button class="tool-btn" data-player="${player.player_id}">
+                ${player.is_self ? "👤 Moi" : "🎨 " + player.username}
+                <span style="margin-left:auto;opacity:.8">${player.pixel_count} px</span>
+            </button>
+        `).join("");
+
+        list.querySelectorAll("button[data-player]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const playerId = btn.dataset.player;
+                loadWorld(worldId, playerId === profile.user_id ? null : playerId);
+            });
+        });
+    } catch(e) {
+        console.warn("Galerie impossible à charger :", e);
+    }
 }
 
 init().catch(console.error);

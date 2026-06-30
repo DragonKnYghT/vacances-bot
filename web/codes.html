@@ -210,14 +210,7 @@ input.addEventListener("input", () => {
 
 async function checkPreview(code) {
     try {
-        const res = await fetch(`${(await import("./static/js/api.js")).API_BASE || ""}/api/codes/check`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${localStorage.getItem("jwt_token")}`
-            },
-            body: JSON.stringify({ code })
-        }).then(r => r.json());
+        const res = await api.checkCode(code);
 
         lastChecked = code;
 
@@ -246,16 +239,8 @@ async function redeem() {
     btnRedeem.textContent = "...";
 
     try {
-        const { api } = await import("./static/js/api.js");
-        const res = await fetch(`https://vacances-bot-web.onrender.com/api/codes/redeem`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${localStorage.getItem("jwt_token")}`
-            },
-            body: JSON.stringify({ code })
-        });
-        const data = await res.json();
+        const res = await api.redeemCode(code);
+        const data = res;
 
         if (!res.ok) {
             input.classList.remove("valid");

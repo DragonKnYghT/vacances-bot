@@ -123,6 +123,7 @@ GACHA_CLASSES = [
     {"id":"roi",         "name":"Roi 👑",            "rarity":"legendaire","bonus":"TOUT -25%","upgrade_discount":0.25,"shop_discount":0.25,"pixel_cost":0.75},
     {"id":"sorcier",     "name":"Sorcier Noir 🧙",   "rarity":"legendaire","bonus":"+5pts toutes activités + pixels gratuits","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":0.0,"activity_bonus":5},
     {"id":"titan",       "name":"Titan ⚡",          "rarity":"legendaire","bonus":"Double points vocal/messages","upgrade_discount":0.10,"shop_discount":0.10,"pixel_cost":0.5},
+    {"id":"asterion",    "name":"Asterion 🌌",       "rarity":"secret",     "bonus":"Mystère absolu","upgrade_discount":0.0,"shop_discount":0.0,"pixel_cost":0.0}
 ]
 
 GACHA_RACES = [
@@ -140,7 +141,8 @@ GACHA_RACES = [
     {"id":"necromant",   "name":"Nécromanien 💀",    "rarity":"epique",    "bonus":"Récupère 50% mat. dépensés"},
     {"id":"phenix",      "name":"Phénix 🔥",         "rarity":"legendaire","bonus":"Reroll gratuit 1×/semaine"},
     {"id":"celeste",     "name":"Être Céleste ⭐",   "rarity":"legendaire","bonus":"Tous les bonus ×1.5"},
-    {"id":"ancien",      "name":"Ancien 🌌",         "rarity":"legendaire","bonus":"Incontournable"}
+    {"id":"ancien",      "name":"Ancien 🌌",         "rarity":"legendaire","bonus":"Incontournable"},
+    {"id":"lys","name":"Lys Lunaire 🌙","rarity":"secret","bonus":"Aube secrète"}
 ]
 
 # ── Mondes / maps pixel ──────────────────────────────────────────────────────
@@ -329,7 +331,7 @@ def get_user_doc(user_id: str) -> dict:
         "unlocked_nodes": [],
         "completed_trials": [],       # Épreuves de l'arbre réussies
         "tutorial_progress": "START",  # Suivi histoire : START, ONE_BLOC_INTRO, EQUIP_SWORD, DONE
-        "one_block": {"phase": 1, "broken": 0, "next": "bois"},
+        "one_block": {"phase": 1, "broken": 0, "next": "bois", "current_hp": 10},
         "inventory": [],               # Contient les dictionnaires d'équipements possédés
         "gacha_pity": {"total_pulls": 0, "current_step": 0, "bonus_chance": 0.0},
         "boss_progress": {"boss_1": 500, "boss_2": 2500, "boss_3": 10000, "boss_4": 50000}, # Vie restante
@@ -354,6 +356,10 @@ def get_user_doc(user_id: str) -> dict:
         if "one_block" not in doc or not isinstance(doc["one_block"], dict):
             doc["one_block"] = default_rpg_fields["one_block"]
             updates["one_block"] = default_rpg_fields["one_block"]
+        else:
+            if "current_hp" not in doc["one_block"]:
+                doc["one_block"]["current_hp"] = default_rpg_fields["one_block"]["current_hp"]
+                updates["one_block.current_hp"] = default_rpg_fields["one_block"]["current_hp"]
         if "gacha_pity" not in doc or not isinstance(doc["gacha_pity"], dict):
             doc["gacha_pity"] = default_rpg_fields["gacha_pity"]
             updates["gacha_pity"] = default_rpg_fields["gacha_pity"]
@@ -566,11 +572,13 @@ def get_one_block_state():
         if item.get("item_id") == "wooden_pickaxe" and item.get("equipped") is True
     )
     return jsonify({
-        "phase":        one_block_data.get("phase", 1),
-        "broken":       one_block_data.get("broken", 0),
-        "next_block":   one_block_data.get("next", "bois"),
-        "phase_needed": one_block_data.get("phase", 1) * 100,
-        "has_pickaxe":  has_pickaxe,
+        "phase":         one_block_data.get("phase", 1),
+        "broken":        one_block_data.get("broken", 0),
+        "next_block":    one_block_data.get("next", "bois"),
+        "phase_needed":  one_block_data.get("phase", 1) * 100,
+        "hp_remaining":  one_block_data.get("current_hp", 10),
+        "materials":     doc.get("materials", {}),
+        "has_pickaxe":   has_pickaxe,
         "tutorial_progress": doc.get("tutorial_progress"),
     })
 
@@ -587,53 +595,74 @@ def mine_one_block():
     if not has_pickaxe and doc.get("tutorial_progress") == "DONE":
         return jsonify({"error": "Tu dois forger et équiper une Pioche en Bois pour miner le One Bloc !"}), 400
 
-    one_block_data = doc.get("one_block", {"phase": 1, "broken": 0, "next": "bois"})
+    one_block_data = doc.get("one_block", {"phase": 1, "broken": 0, "next": "bois", "current_hp": 10})
     
     # Calcul des bonus de clic via l'arbre du joueur
     click_power = 1
     if "clics_efficaces" in doc.get("unlocked_nodes", []):
         click_power += 1
 
-    current_broken = one_block_data.get("broken", 0) + click_power
     current_phase = one_block_data.get("phase", 1)
-    
-    # Détermination du matériau gagné selon la phase
-    materials_pool = ["bois"]
-    if current_phase >= 2: materials_pool.append("pierre")
-    if current_phase >= 3: materials_pool.append("fer")
-    if current_phase >= 4: materials_pool.extend(["cristal", "magie"])
-    
-    gained_mat = _random.choice(materials_pool)
-    
-    # Changement de phase tous les 100 blocs cassés
+    current_broken = one_block_data.get("broken", 0)
+    current_hp = one_block_data.get("current_hp", 10) - 1
+
+    block_broken = False
+    gained_mat = None
     next_phase = current_phase
-    if current_broken >= current_phase * 100:
-        next_phase += 1
-        current_broken = 0
+    next_mat_visual = one_block_data.get("next", "bois")
 
-    # Prochain bloc à afficher visuellement
-    next_mat_visual = _random.choice(materials_pool)
+    if current_hp <= 0:
+        block_broken = True
+        # Un clic casse le bloc ; le bonus clics efficaces ajoute des blocs brisés supplémentaires
+        blocks_cleared = max(1, click_power)
+        current_broken += blocks_cleared
 
-    # Mise à jour MongoDB
-    db.users.update_one(
-        {"user_id": request.user_id},
-        {
-            "$set": {
-                "one_block.broken": current_broken,
-                "one_block.phase": next_phase,
-                "one_block.next": next_mat_visual
-            },
-            "$inc": {f"materials.{gained_mat}": 1}
+        # Détermination du matériau gagné selon la phase
+        materials_pool = ["bois"]
+        if current_phase >= 2: materials_pool.append("pierre")
+        if current_phase >= 3: materials_pool.append("fer")
+        if current_phase >= 4: materials_pool.extend(["cristal", "magie"])
+
+        gained_mat = _random.choice(materials_pool)
+
+        # Changement de phase selon le nombre de blocs cassés
+        while current_broken >= next_phase * 100:
+            current_broken -= next_phase * 100
+            next_phase += 1
+
+        current_hp = 10
+        next_mat_visual = _random.choice(materials_pool)
+
+        update_fields = {
+            "one_block.broken": current_broken,
+            "one_block.phase": next_phase,
+            "one_block.next": next_mat_visual,
+            "one_block.current_hp": current_hp
         }
-    )
+        db.users.update_one(
+            {"user_id": request.user_id},
+            {
+                "$set": update_fields,
+                "$inc": {f"materials.{gained_mat}": 1}
+            }
+        )
+    else:
+        db.users.update_one(
+            {"user_id": request.user_id},
+            {
+                "$set": {"one_block.current_hp": current_hp}
+            }
+        )
 
     return jsonify({
         "ok": True,
+        "block_broken": block_broken,
         "gained": gained_mat,
         "broken": current_broken,
         "phase": next_phase,
         "next_block": next_mat_visual,
-        "phase_needed": next_phase * 100
+        "phase_needed": next_phase * 100,
+        "hp_remaining": current_hp
     })
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -733,7 +762,15 @@ def sell_item():
             }
         }
     )
-    return jsonify({"ok": True, "earned": earnings})
+
+    doc_after = get_user_doc(request.user_id)
+    total_points = (
+        doc_after.get("vocal_points", 0) +
+        doc_after.get("message_points", 0)
+    )
+    remaining = max(0, total_points - doc_after.get("spent_points", 0))
+
+    return jsonify({"ok": True, "earned": earnings, "remaining_points": remaining})
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes Inventaire & La Forge (Déblocable monde 2 via l'arbre)
@@ -1046,9 +1083,21 @@ def get_pixelmap(world_id):
     if world_id not in doc.get("unlocked_worlds", ["monde_1"]):
         return jsonify({"error": "Monde verrouillé"}), 403
 
+    player_id = request.args.get("player_id")
+    if player_id:
+        owner_user = db.users.find_one({"user_id": player_id}, {"_id": 0, "username": 1})
+        if not owner_user:
+            return jsonify({"error": "Joueur introuvable"}), 404
+        query = {"world": world_id, "$or": [{"player_id": player_id}, {"placed_by": player_id}]}
+        owner = {"player_id": player_id, "username": owner_user.get("username", "Joueur")}
+    else:
+        player_id = request.user_id
+        query = {"world": world_id, "$or": [{"player_id": player_id}, {"placed_by": player_id}]}
+        owner = {"player_id": player_id, "username": doc.get("username", "Toi"), "is_self": True}
+
     pixels = list(db.pixels.find(
-        {"world": world_id},
-        {"_id": 0, "x": 1, "y": 1, "color": 1, "placed_by": 1, "placed_at": 1}
+        query,
+        {"_id": 0, "x": 1, "y": 1, "color": 1, "placed_by": 1, "placed_at": 1, "player_id": 1}
     ))
 
     return jsonify({
@@ -1056,6 +1105,7 @@ def get_pixelmap(world_id):
         "pixels": pixels,
         "grid_size": WORLDS[world_id]["grid_size"],
         "user_pixels_remaining": doc.get("pixels_remaining", 0),
+        "owner": owner,
     })
 
 @app.route("/api/pixelmap/<world_id>/place", methods=["POST"])
@@ -1082,9 +1132,10 @@ def place_pixel(world_id):
         return jsonify({"error": "Couleur invalide"}), 400
 
     db.pixels.update_one(
-        {"world": world_id, "x": x, "y": y},
+        {"world": world_id, "x": x, "y": y, "player_id": request.user_id},
         {"$set": {
             "color": color,
+            "player_id": request.user_id,
             "placed_by": request.user_id,
             "placed_at": datetime.utcnow(),
         }},
@@ -1132,6 +1183,39 @@ def get_pixel_invitations():
     doc = get_user_doc(request.user_id)
     invitations = doc.get("pixel_invitations", [])[-10:]  # 10 dernières
     return jsonify({"invitations": invitations})
+
+
+@app.route("/api/pixelmap/<world_id>/gallery")
+@require_auth
+def get_pixelmap_gallery(world_id):
+    if world_id not in WORLDS:
+        return jsonify({"error": "Monde inconnu"}), 404
+
+    doc = get_user_doc(request.user_id)
+    if world_id not in doc.get("unlocked_worlds", ["monde_1"]):
+        return jsonify({"error": "Monde verrouillé"}), 403
+
+    pipeline = [
+        {"$match": {"world": world_id}},
+        {"$group": {"_id": {"$ifNull": ["$player_id", "$placed_by"]}, "pixel_count": {"$sum": 1}}},
+        {"$sort": {"pixel_count": -1}}
+    ]
+    players = list(db.pixels.aggregate(pipeline))
+    player_ids = [p["_id"] for p in players if p["_id"]]
+    user_docs = db.users.find({"user_id": {"$in": player_ids}}, {"user_id": 1, "username": 1})
+    user_map = {u["user_id"]: u.get("username", u["user_id"]) for u in user_docs}
+
+    return jsonify({
+        "players": [
+            {
+                "player_id": p["_id"],
+                "username": user_map.get(p["_id"], p["_id"]),
+                "pixel_count": p["pixel_count"],
+                "is_self": p["_id"] == request.user_id
+            }
+            for p in players
+        ]
+    })
 
 
 @app.route("/api/admin/cleanup-anonymous", methods=["POST"])
@@ -1250,61 +1334,70 @@ def get_pity_status():
     doc = get_user_doc(request.user_id)
     return jsonify({"pity": doc.get("gacha_pity")})
 
+def _get_gacha_pull_type(data, view_args):
+    pull_type = view_args.get("pull_type") if view_args else None
+    if not pull_type and data:
+        pull_type = data.get("type")
+    return pull_type
+
 @app.route("/api/gacha/pull", methods=["POST"])
+@app.route("/api/gacha/pull/<pull_type>", methods=["POST"])
 @require_auth
-def pull_gacha():
-    """Gère un tirage avec l'augmentation par étape de 5% de pitié tous les 20 tirages."""
-    data = request.get_json()
-    pull_type = data.get("type") # "classe" ou "race"
-    
+def pull_gacha(pull_type=None):
+    """Gère un tirage avec l'augmentation par étape de 5% de pitié, plus une rareté secrète exclue de la pitié."""
+    data = request.get_json(silent=True) or {}
+    pull_type = pull_type or data.get("type")
+    if pull_type not in ("classe", "race"):
+        return jsonify({"error": "Type de tirage invalide"}), 400
+
     doc = get_user_doc(request.user_id)
     ticket_field = f"tickets_{pull_type}"
-    
     if doc.get(ticket_field, 0) < 1:
         return jsonify({"error": f"Tu n'as pas de Ticket {pull_type.capitalize()} ! Accède au Shop."}), 400
 
     pity_data = doc.get("gacha_pity", {"total_pulls": 0, "current_step": 0, "bonus_chance": 0.0})
-    total_pulls = pity_data.get("total_pulls", 0) + 1
-    
-    # SOFT PITY : dès 10 tirages sans légendaire, +5% tous les 10 tirages (max +50% à 110 tirages)
-    current_step = total_pulls // 10
-    if current_step > 10: current_step = 10
-    bonus_chance = current_step * 5.0
+    current_total_pulls = pity_data.get("total_pulls", 0)
 
-    # HARD PITY : à 200 tirages, légendaire garanti (100%)
-    hard_pity_triggered = total_pulls >= 200
-
-    roll = _random.uniform(0, 100)
-    legendary_threshold = 3.0 + bonus_chance
-    
-    pool = GACHA_CLASSES if pull_type == "classe" else GACHA_RACES
-    
-    if hard_pity_triggered or roll <= legendary_threshold:
-        gained_rarity = "legendaire"
-        # Reset pitié après légendaire
-        total_pulls = 0
-        current_step = 0
-        bonus_chance = 0.0
-    elif roll <= legendary_threshold + 12:
-        gained_rarity = "epique"
-    elif roll <= legendary_threshold + 12 + 30:
-        gained_rarity = "rare"
+    # Secret rarity exclue de la pitié : très faible, indépendante du reste
+    if _random.random() < 0.0001:
+        gained_rarity = "secret"
+        secret_hit = True
+        total_pulls = current_total_pulls
     else:
-        gained_rarity = "commun"
+        secret_hit = False
+        total_pulls = current_total_pulls + 1
+        current_step = total_pulls // 10
+        if current_step > 10: current_step = 10
+        bonus_chance = current_step * 5.0
+        legendary_threshold = 3.0 + bonus_chance
+        hard_pity_triggered = total_pulls >= 200
 
-    # Filtrer les entités de cette rareté
-    available_rewards = [item for item in pool if item["rarity"] == gained_rarity]
+        if hard_pity_triggered or _random.uniform(0, 100) <= legendary_threshold:
+            gained_rarity = "legendaire"
+            total_pulls = 0
+            current_step = 0
+            bonus_chance = 0.0
+        elif _random.uniform(0, 100) <= 12:
+            gained_rarity = "epique"
+        elif _random.uniform(0, 100) <= 30:
+            gained_rarity = "rare"
+        else:
+            gained_rarity = "commun"
+
+    pool = GACHA_CLASSES if pull_type == "classe" else GACHA_RACES
+    available_rewards = [item for item in pool if item.get("rarity") == gained_rarity]
+    if not available_rewards:
+        # Fallback sécurité
+        available_rewards = [item for item in pool if item.get("rarity") == "legendaire"] or pool
     reward = _random.choice(available_rewards)
 
-    # Sauvegarde du choix en base (on stocke l'id court, pas le nom affiché,
-    # pour rester cohérent avec RACES_INFO / GACHA_CLASSES côté frontend)
     update_set = {
         pull_type: reward["id"],
         "gacha_pity.total_pulls": total_pulls,
-        "gacha_pity.current_step": current_step,
-        "gacha_pity.bonus_chance": bonus_chance
+        "gacha_pity.current_step": 0 if secret_hit else current_step,
+        "gacha_pity.bonus_chance": 0.0 if secret_hit else bonus_chance
     }
-    
+
     db.users.update_one(
         {"user_id": request.user_id},
         {
@@ -1314,14 +1407,19 @@ def pull_gacha():
         }
     )
 
+    updated_doc = get_user_doc(request.user_id)
+    tickets_left = updated_doc.get(ticket_field, 0)
+
     return jsonify({
         "ok": True,
         "reward": reward,
+        "rarity": gained_rarity,
+        "tickets_left": tickets_left,
         "pity": {
             "total_pulls": total_pulls,
-            "current_step": current_step,
-            "bonus_chance": bonus_chance,
-            "hard_pity_triggered": hard_pity_triggered if 'hard_pity_triggered' in dir() else False
+            "current_step": 0 if secret_hit else current_step,
+            "bonus_chance": 0.0 if secret_hit else bonus_chance,
+            "hard_pity_triggered": not secret_hit and total_pulls >= 200
         }
     })
 

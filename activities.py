@@ -35,11 +35,7 @@ def build_blindtest_embed(content: dict) -> discord.Embed:
         description=f"**Trouve la chanson avec ces paroles :**\n\n*{content['paroles']}*",
         color=0xe91e63
     )
-    embed.add_field(name="💡 Indice bonus", value=f"||{content['indice_bonus']}||", inline=False)
-    embed.add_field(name="✅ Titre", value=f"||{content['titre']}||", inline=True)
-    embed.add_field(name="🎤 Artiste", value=f"||{content['artiste']}||", inline=True)
-    if content.get("source"):
-        embed.add_field(name="🎬 Source", value=f"||{content['source']}||", inline=True)
+    embed.add_field(name="💡 Indice bonus", value=content.get("indice_bonus", "Aucun indice"), inline=False)
     embed.add_field(
         name="🎯 Comment participer ?",
         value=f"Utilise `/jouer <titre> - <artiste>` !\n+{POINTS_PARTICIPATION} pts participation | +{POINTS_BONNE_REPONSE} pts par bonne réponse (titre/artiste/source)",
