@@ -41,9 +41,15 @@ async def daily_scheduler():
 @tasks.loop(minutes=1)
 async def weekly_scheduler():
     now = datetime.now(TIMEZONE)
+    
+    # On force la date pivot d'origine au 01/07/2026 à 10h00
+    start = datetime(2026, 7, 1, 10, 0, 0).replace(tzinfo=TIMEZONE)
+    
     state = db.get_state()
-    start = datetime.fromisoformat(state["week_start"]).replace(tzinfo=TIMEZONE)
-    if now >= start + timedelta(weeks=1) and now.hour == 10 and now.minute == 0:
+    week_num = state["current_week"]
+    
+    # La semaine 1 se termine à start + 1 semaine, la semaine 2 à start + 2 semaines, etc.
+    if now >= start + timedelta(weeks=week_num) and now.hour == 10 and now.minute == 0:
         channel = bot.get_channel(CHANNEL_ID)
         if channel:
             await send_weekly_recap(channel)
