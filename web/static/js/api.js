@@ -94,24 +94,24 @@ export const api = {
     getForgeRecipes:  ()          => apiFetch("/api/forge/recipes"),
     craftEquipment:   (recipeKey)  => apiFetch("/api/forge/craft", {
         method: "POST",
-        body: JSON.stringify({ recipe_key: recipeKey })
+        body: JSON.stringify({ recipe: recipeKey })
     }),
 
     // ✨ NOUVEAU : Inventaire & Équipement
     getInventory:     ()          => apiFetch("/api/inventory"),
-    equipItem:        (itemKey)   => apiFetch("/api/inventory/equip", {
+    equipItem:        (itemId)    => apiFetch("/api/inventory/equip", {
         method: "POST",
-        body: JSON.stringify({ item_key: itemKey })
+        body: JSON.stringify({ id: itemId })
     }),
 
     // ✨ NOUVEAU : Système de Boss
-    getBossState:     ()          => apiFetch("/api/boss/state"),
+    getBossState:     ()          => apiFetch("/api/boss/status"),
     attackBoss:       ()          => apiFetch("/api/boss/attack", { method: "POST" }),
 
     // ✨ NOUVEAU : Épreuves de l'Arbre Monde
-    completeTrial:    (nodeId)    => apiFetch("/api/skilltree/trial/complete", {
+    completeTrial:   (node, success) => apiFetch("/api/skilltree/trial/complete", {
         method: "POST",
-        body: JSON.stringify({ node_id: nodeId })
+        body: JSON.stringify({ node, success }),
     }),
 
     // Skill Tree (par monde, 2 arbres : base + player)
@@ -119,10 +119,6 @@ export const api = {
     unlockNode:      (world, node, tree) => apiFetch(`/api/skilltree/${world}/unlock`, {
         method: "POST",
         body: JSON.stringify({ node, tree }),
-    }),
-    completeTrial:   (node, success) => apiFetch("/api/skilltree/trial/complete", {
-        method: "POST",
-        body: JSON.stringify({ node, success }),
     }),
     getPixelMap:     (world, playerId) => apiFetch(`/api/pixelmap/${world}${playerId ? `?player_id=${encodeURIComponent(playerId)}` : ""}`),
     getPixelMapGallery: (world)   => apiFetch(`/api/pixelmap/${world}/gallery`),
@@ -139,6 +135,7 @@ export const api = {
     }),
 
     // Gacha
+    getGachaInfo:    ()           => apiFetch("/api/gacha/info"),
     getGachaPity:    ()           => apiFetch("/api/gacha/pity/status"),
     pullGacha:       (type)       => apiFetch("/api/gacha/pull", {
         method: "POST",
@@ -155,9 +152,15 @@ export const api = {
         body: JSON.stringify({ code }),
     }),
 
-    // One Bloc / Cliqueur
-    getOneBlockState: ()          => apiFetch("/api/oneblock/state"),
-    mineOneBlock:     ()          => apiFetch("/api/oneblock/mine", { method: "POST" }),
+    // Quêtes quotidiennes
+    getDailyQuest:   ()           => apiFetch("/api/quests/daily"),
+    claimQuest:      ()           => apiFetch("/api/quests/claim", { method: "POST" }),
+
+    // Easter Eggs
+    claimEasterEgg:  (eggId)      => apiFetch("/api/easter-egg/claim", {
+        method: "POST",
+        body: JSON.stringify({ egg_id: eggId }),
+    }),
 };
 
 // ── Avatar Discord ────────────────────────────────────────────────────────
