@@ -165,9 +165,9 @@
             clicker.addEventListener("click", handleMine);
         }
 
-        // HP simulés par bloc (10 HP par bloc, réduits au fil des clics)
+        // HP dynamiques par type de bloc (#2)
         let currentHp = 10;
-        const MAX_HP = 10;
+        let maxHp = 10;
 
         async function refreshState() {
             try {
@@ -184,7 +184,7 @@
                 visualBlock.classList.add(config.css);
                 visualBlock.textContent = config.emoji;
 
-                document.getElementById("next-material-hint").textContent = `Prochain matériau probable : ${currentType.toUpperCase()} — Clique pour miner !`;
+                document.getElementById("next-material-hint").textContent = `Bloc actuel : ${currentType.toUpperCase()} (${state.max_hp} HP) — Clique pour miner !`;
 
                 // Barre de phase
                 const broken = state.broken || 0;
@@ -193,7 +193,8 @@
                 document.getElementById("phase-label").textContent = `${broken} / ${needed}`;
                 document.getElementById("phase-bar").style.width = phasePct + "%";
 
-                currentHp = state.hp_remaining ?? MAX_HP;
+                currentHp = state.hp_remaining ?? 10;
+                maxHp = state.max_hp ?? 10;
                 updateHpBar();
 
                 renderResources(state.materials);
@@ -204,9 +205,9 @@
         }
 
         function updateHpBar() {
-            const pct = Math.max(0, currentHp / MAX_HP * 100);
+            const pct = Math.max(0, currentHp / maxHp * 100);
             document.getElementById("hp-bar").style.width = pct + "%";
-            document.getElementById("hp-label").textContent = `${currentHp} / ${MAX_HP}`;
+            document.getElementById("hp-label").textContent = `${currentHp} / ${maxHp}`;
         }
 
         async function handleMine() {
@@ -229,21 +230,32 @@
                     }
                 }
 
-                currentHp = result.hp_remaining ?? MAX_HP;
+                currentHp = result.hp_remaining ?? 10;
+                maxHp = result.max_hp ?? 10;
                 updateHpBar();
 
-                // Mettre à jour phase bar sans full reload
+                // Mettre à jour phase bar
                 const broken = result.broken || 0;
                 const needed = result.phase_needed || 100;
                 const phasePct = Math.min(100, Math.round(broken / needed * 100));
                 document.getElementById("phase-label").textContent = `${broken} / ${needed}`;
                 document.getElementById("phase-bar").style.width = phasePct + "%";
 
+                // Mettre à jour le bloc visuel si cassé
                 if (result.block_broken) {
-                    await refreshState();
-                } else {
-                    const state = await api.getOneBlockState();
-                    renderResources(state.materials);
+                    const visualBlock = document.getElementById("visual-block");
+                    const currentType = result.next_block || "bois";
+                    const typeMap = { bois: "wood", pierre: "stone", fer: "iron", cristal: "diamond", magie: "netherite" };
+                    const config = blockConfig[typeMap[currentType]] || blockConfig.default;
+                    visualBlock.className = "main-block";
+                    visualBlock.classList.add(config.css);
+                    visualBlock.textContent = config.emoji;
+                    document.getElementById("next-material-hint").textContent = `Bloc actuel : ${currentType.toUpperCase()} (${maxHp} HP) — Clique pour miner !`;
+                }
+
+                // #3 : Toujours actualiser les matériaux depuis la réponse API
+                if (result.materials) {
+                    renderResources(result.materials);
                 }
             } catch (err) {
                 toast(err.message || "Impossible de miner", "error");
