@@ -693,16 +693,92 @@ function selectNode(node) {
     const actionEl = document.getElementById("nd-action");
     if (node.unlocked) {
         actionEl.innerHTML = `<div class="unlocked-badge">✅ Déjà débloqué${node.unlocks ? ` — débloque ${WORLD_NAMES[node.unlocks] || node.unlocks}` : ""}</div>`;
-    } else if (node.affordable && (!node.trial_required || node.trial_passed)) {
+    } else if (node.trial_required && !node.trial_passed) {
+        const trialName = node.trial_required === "osu_rhythm" ? "Épreuve de Rythme (OSU)" : "Test Your Might";
+        const trialIcon = node.trial_required === "osu_rhythm" ? "🎵" : "⚔️";
+        actionEl.innerHTML = `
+            <div style="background:rgba(245,197,66,.1);border:1px solid var(--gold);border-radius:8px;padding:.6rem .75rem;margin-bottom:.5rem;font-size:.82rem;color:var(--gold)">
+                ${trialIcon} <strong>${trialName}</strong> requis pour débloquer ce nœud !
+            </div>
+            <button class="btn-primary" id="btn-trial" style="width:100%;padding:.7rem">${trialIcon} Lancer l'épreuve</button>
+        `;
+        document.getElementById("btn-trial").onclick = () => launchTrial(node);
+    } else if (node.affordable) {
         actionEl.innerHTML = `<button class="btn-gold" id="btn-unlock">🔓 Débloquer</button>`;
         document.getElementById("btn-unlock").onclick = () => unlock(node.id);
-    } else if (node.trial_required && !node.trial_passed) {
-        actionEl.innerHTML = `<button class="btn-outline" disabled style="width:100%;padding:.7rem;opacity:.5">⚔️ Épreuve requise</button>`;
     } else if (node.can_unlock) {
         actionEl.innerHTML = `<button class="btn-outline" disabled style="width:100%;padding:.7rem;opacity:.5">Pas assez de matériaux</button>`;
     } else {
         actionEl.innerHTML = `<button class="btn-outline" disabled style="width:100%;padding:.7rem;opacity:.5">Prérequis manquants</button>`;
     }
+}
+
+// ── Lancement d'une épreuve (#6 : bouton cliquable) ──────────────────────────
+async function launchTrial(node) {
+    const isRhythm = node.trial_required === "osu_rhythm";
+    const trialName = isRhythm ? "Épreuve de Rythme" : "Test Your Might";
+
+    // Mini-jeu simple : 5 clics rapides sur des cibles aléatoires
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem";
+    overlay.innerHTML = `
+        <h2 style="color:#fff;font-size:1.5rem">${isRhythm ? "🎵" : "⚔️"} ${trialName}</h2>
+        <p style="color:#aaa;font-size:.9rem">Clique sur les ${isRhythm ? "notes" : "cibles"} qui apparaissent ! 5 réussites pour valider.</p>
+        <div id="trial-score" style="color:var(--gold);font-size:1.2rem;font-weight:800">Score : 0 / 5</div>
+        <div id="trial-area" style="position:relative;width:400px;height:300px;background:var(--bg3);border:2px solid var(--border);border-radius:12px;overflow:hidden"></div>
+        <button class="btn-outline" id="trial-cancel" style="margin-top:.5rem">Annuler</button>
+    `;
+    document.body.appendChild(overlay);
+
+    let score = 0;
+    const needed = 5;
+    const area = overlay.querySelector("#trial-area");
+    const scoreEl = overlay.querySelector("#trial-score");
+
+    overlay.querySelector("#trial-cancel").onclick = () => overlay.remove();
+
+    function spawnTarget() {
+        if (score >= needed) return;
+        const target = document.createElement("div");
+        const x = Math.random() * 350;
+        const y = Math.random() * 250;
+        target.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:50px;height:50px;border-radius:50%;background:${isRhythm ? "#7c5cfc" : "#f05c5c"};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.5rem;box-shadow:0 0 20px ${isRhythm ? "#7c5cfc" : "#f05c5c"}`;
+        target.textContent = isRhythm ? "🎵" : "⚔️";
+        target.onclick = () => {
+            score++;
+            scoreEl.textContent = `Score : ${score} / ${needed}`;
+            target.remove();
+            if (score >= needed) {
+                finishTrial(true);
+            } else {
+                setTimeout(spawnTarget, 300);
+            }
+        };
+        area.appendChild(target);
+        setTimeout(() => { if (target.parentNode) target.remove(); }, 1500);
+        setTimeout(spawnTarget, 800);
+    }
+
+    async function finishTrial(success) {
+        overlay.innerHTML = `
+            <h2 style="color:#fff;font-size:1.5rem">${success ? "🎉 Épreuve réussie !" : "💥 Échec..."}</h2>
+            <p style="color:#aaa">${success ? "Tu peux maintenant débloquer ce nœud !" : "Réessaye !"}</p>
+        `;
+        if (success) {
+            try {
+                await api.completeTrial(node.id, true);
+                toast("✅ Épreuve validée ! Tu peux débloquer le nœud.", "success");
+            } catch(e) {
+                toast(e.message, "error");
+            }
+        }
+        setTimeout(() => {
+            overlay.remove();
+            loadWorld(currentWorldId);
+        }, 2000);
+    }
+
+    spawnTarget();
 }
 
 function hideNodeDetail() {
