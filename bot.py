@@ -485,17 +485,9 @@ async def check_vocal_points_loop():
 @bot.event
 async def on_ready():
     print(f"✅ Bot connecté : {bot.user}")
-    
-    # ── SÉCURITÉ : ON RESET À LA SEMAINE 1 UNIQUEMENT SI ON EST EN PHASE DE LANCEMENT/TESTS ──
-    state = db.get_state()
-    if state.get("current_week", 1) > 1: # Si tes anciens tests ont mis Semaine 3
-        db.state_col.update_one({}, {"$set": {"current_week": 1, "week_start": str(datetime.now(TIMEZONE).date())}}, upsert=True)
-        print("📢 Nettoyage des tests : SEMAINE 1 forcée pour le lancement ! ✨")
-    
     # Configuration des menus et synchronisation des commandes
     setup_menu_command(tree, bot)
     await tree.sync()
-    
     # Démarrage de TOUTES les tâches automatiques (sans doublon !)
     daily_scheduler.start()
     weekly_scheduler.start()
@@ -503,10 +495,9 @@ async def on_ready():
     if not check_vocal_points_loop.is_running():
         check_vocal_points_loop.start()
         print("[TASKS] Boucle vocale démarrée avec succès.")
-        
     channel = bot.get_channel(CHANNEL_ID)
     if channel:
-        state = db.get_state() # On recharge l'état mis à jour
+        state = db.get_state()
         week_num = state["current_week"]
         activity = ACTIVITIES_SCHEDULE.get(week_num, {})
         embed = discord.Embed(
@@ -519,6 +510,8 @@ async def on_ready():
             color=0x2ecc71
         )
         await channel.send(embed=embed)
+async def run_bot():
+    await bot.start(TOKEN) 
 
 # ──────────────────────────────────────────
 #  POINTS MESSAGES
