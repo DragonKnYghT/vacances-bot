@@ -486,9 +486,11 @@ async def check_vocal_points_loop():
 async def on_ready():
     print(f"✅ Bot connecté : {bot.user}")
     
-    # ── FORCE LA REINITIALISATION A LA SEMAINE 1 DANS MONGO ──
-    db.state_col.update_one({}, {"$set": {"current_week": 1, "week_start": str(datetime.now(TIMEZONE).date())}}, upsert=True)
-    print("📢 Base de données mise à jour : SEMAINE 1 forcée !")
+    # ── SÉCURITÉ : ON RESET À LA SEMAINE 1 UNIQUEMENT SI ON EST EN PHASE DE LANCEMENT/TESTS ──
+    state = db.get_state()
+    if state.get("current_week", 1) > 1: # Si tes anciens tests ont mis Semaine 3
+        db.state_col.update_one({}, {"$set": {"current_week": 1, "week_start": str(datetime.now(TIMEZONE).date())}}, upsert=True)
+        print("📢 Nettoyage des tests : SEMAINE 1 forcée pour le lancement ! ✨")
     
     # Configuration des menus et synchronisation des commandes
     setup_menu_command(tree, bot)
@@ -504,7 +506,7 @@ async def on_ready():
         
     channel = bot.get_channel(CHANNEL_ID)
     if channel:
-        state = db.get_state()
+        state = db.get_state() # On recharge l'état mis à jour
         week_num = state["current_week"]
         activity = ACTIVITIES_SCHEDULE.get(week_num, {})
         embed = discord.Embed(
