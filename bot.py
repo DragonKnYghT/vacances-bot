@@ -486,6 +486,10 @@ async def check_vocal_points_loop():
 async def on_ready():
     print(f"✅ Bot connecté : {bot.user}")
     
+    # ── FORCE LA REINITIALISATION A LA SEMAINE 1 DANS MONGO ──
+    db.state_col.update_one({}, {"$set": {"current_week": 1, "week_start": str(datetime.now(TIMEZONE).date())}}, upsert=True)
+    print("📢 Base de données mise à jour : SEMAINE 1 forcée !")
+    
     # Configuration des menus et synchronisation des commandes
     setup_menu_command(tree, bot)
     await tree.sync()
@@ -513,9 +517,6 @@ async def on_ready():
             color=0x2ecc71
         )
         await channel.send(embed=embed)
-
-async def run_bot():
-    await bot.start(TOKEN)
 
 # ──────────────────────────────────────────
 #  POINTS MESSAGES
