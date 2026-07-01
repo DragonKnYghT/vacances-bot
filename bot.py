@@ -35,7 +35,7 @@ db = DataManager()
 @tasks.loop(minutes=1)
 async def daily_scheduler():
     now = datetime.now(TIMEZONE)
-    if now.hour == 11 and now.minute == 35:
+    if now.hour == 14 and now.minute == 0:
         await send_daily_activity()
 
 @tasks.loop(minutes=1)
@@ -43,7 +43,7 @@ async def weekly_scheduler():
     now = datetime.now(TIMEZONE)
     
     # On force la date pivot d'origine au 01/07/2026 à 10h00
-    start = datetime(2026, 7, 1, 11, 35, 0).replace(tzinfo=TIMEZONE)
+    start = datetime(2026, 7, 1, 14, 0, 0).replace(tzinfo=TIMEZONE)
     
     state = db.get_state()
     week_num = state["current_week"]
