@@ -1776,19 +1776,35 @@ def claim_quest():
 #  ROUTES APIS DU GACHA (CLASSES & RACES)
 # ──────────────────────────────────────────
 
+@app.route("/api/gacha/info", methods=["GET"])
+@require_auth
+def get_gacha_info():
+    """Renvoie les données de base nécessaires au chargement du Gacha."""
+    doc = get_user_doc(request.user_id)
+    if not doc:
+        return jsonify({"error": "Profil introuvable"}), 404
+        
+    return jsonify({
+        "tickets_classe": doc.get("tickets_classe", 0),
+        "tickets_race": doc.get("tickets_race", 0),
+        "current_classe": doc.get("current_classe", "Aucune"),
+        "current_race": doc.get("current_race", "Aucune")
+    }), 200
+
 @app.route("/api/gacha/pity/status", methods=["GET"])
 @require_auth
 def get_gacha_pity():
-    """Renvoie les statistiques de pity du joueur pour l'affichage de la barre"""
+    """Renvoie les statistiques de pity du joueur."""
     doc = get_user_doc(request.user_id)
-    
-    # Récupération ou initialisation des compteurs de tirages
+    if not doc:
+        return jsonify({"error": "Profil introuvable"}), 404
+        
     total_pulls = doc.get("gacha_total_pulls", 0)
     
-    # Calcul d'un bonus_chance pour la soft pity si total_pulls >= 10
+    # Calcul de la soft pity (+2% de chance par tirage au-delà du 10ème)
     bonus_chance = 0
     if total_pulls >= 10:
-        bonus_chance = (total_pulls - 10) * 2  # +2% par tirage après le 10ème
+        bonus_chance = (total_pulls - 10) * 2
         
     return jsonify({
         "pity": {
@@ -1800,43 +1816,39 @@ def get_gacha_pity():
 @app.route("/api/gacha/pull", methods=["POST"])
 @require_auth
 def gacha_pull():
-    """Effectue un vrai tirage, consomme un ticket et met à jour le profil du RPG"""
+    """Effectue un tirage, consomme un ticket et met à jour le profil."""
     data = request.json or {}
-    type_tirage = data.get("type")  # Le site envoie "classe" ou "race"
+    type_tirage = data.get("type")
     
     doc = get_user_doc(request.user_id)
+    if not doc:
+        return jsonify({"error": "Profil introuvable"}), 404
     
-    # 1. GESTION DU TIRAGE DE CLASSE
     if type_tirage == "classe":
         tickets = doc.get("tickets_classe", 0)
         if tickets < 1:
-            return jsonify({"error": "Tu n'as pas de Ticket de Classe ! Achète-en un dans la boutique."}), 400
+            return jsonify({"error": "Tu n'as pas de Ticket de Classe !"}), 400
             
-        # Liste des classes disponibles (Communes, Rares, Légendaires)
         pool = ["Guerrier ⚔️", "Mage 🔮", "Voleur 🗡️", "Paladin 🛡️", "Chasseur 🏹", "Nécromancien 💀"]
         recompense = _random.choice(pool)
         
-        # Consomme 1 ticket, augmente le compteur de tirages et enregistre la classe
         db.users.update_one(
             {"user_id": request.user_id},
             {
                 "$inc": {"tickets_classe": -1, "gacha_total_pulls": 1},
                 "$set": {"current_classe": recompense},
-                "$addToSet": {"unlocked_classes": recompense}  # Évite les doublons dans la collection
+                "$addToSet": {"unlocked_classes": recompense}
             }
         )
 
-    # 2. GESTION DU TIRAGE DE RACE
     elif type_tirage == "race":
         tickets = doc.get("tickets_race", 0)
         if tickets < 1:
-            return jsonify({"error": "Tu n'as pas de Ticket de Race ! Achète-en un dans la boutique."}), 400
+            return jsonify({"error": "Tu n'as pas de Ticket de Race !"}), 400
             
-        # Liste des races disponibles
         pool = ["Humain 🧑", "Elfe 🧝", "Nain 🧔", "Orc 👹", "Mort-vivant 🧟", "Démon 😈"]
         recompense = _random.choice(pool)
         
-        # Consomme 1 ticket, augmente le compteur de tirages et enregistre la race
         db.users.update_one(
             {"user_id": request.user_id},
             {
@@ -1846,11 +1858,9 @@ def gacha_pull():
             }
         )
     else:
-        return jsonify({"error": "Type de tirage invalide (doit être 'classe' ou 'race')"}), 400
+        return jsonify({"error": "Type de tirage invalide"}), 400
 
-    # On récupère le document mis à jour pour renvoyer le nouvel état exact au site
     new_doc = get_user_doc(request.user_id)
-
     return jsonify({
         "success": True,
         "reward": recompense,
@@ -1859,7 +1869,6 @@ def gacha_pull():
         "current_classe": new_doc.get("current_classe", "Aucune"),
         "current_race": new_doc.get("current_race", "Aucune")
     }), 200
-
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
