@@ -504,7 +504,7 @@ async def on_ready():
             title="👋 Le bot est en ligne !",
             description=(
                 f"Semaine **{week_num}/8** — {activity.get('emoji','')} **{activity.get('name','')}**\n"
-                f"Activité envoyée chaque matin à **10h00** !\n\n"
+                f"Activité envoyée chaque début d'après-midi à **14h00** !\n\n"
                 f"📋 Commandes : `/menu` `/jouer` `/score` `/classement` `/semaine` `/test`"
             ),
             color=0x2ecc71
